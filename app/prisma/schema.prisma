@@ -1,0 +1,296 @@
+// APPP — Asistente Personal Proactivo de Productividad
+//
+// DESIGN NOTES:
+// - `notifications` uses @@id([notificationId, createdAt]) required by PARTITION BY RANGE.
+// - `notification_deliveries` and `interaction_logs` are partitioned; their actual composite
+//   DB PKs differ from what Prisma models here (Prisma can't use autoincrement in @@id).
+//   delivery_id / log_id are GENERATED ALWAYS AS IDENTITY sequences — globally unique —
+//   so Prisma queries by single PK still find the correct row across all partitions.
+// - `channels` unique constraint on (user_id, channel_type, address) is an expression index
+//   in the migration (JSONB is not B-tree indexable).
+// - workday_start / workday_end are TIME in PostgreSQL, mapped to DateTime @db.Time(0).
+//   Read as JS Date with epoch date (1970-01-01) + actual time; use getUTCHours/getUTCMinutes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// CORE
+// ============================================================
+
+model User {
+  userId       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("user_id")
+  email        String   @unique
+  displayName  String   @map("display_name")
+  timezone     String   @default("America/Santiago")
+  workdayStart DateTime @default(dbgenerated("'08:30'::time")) @db.Time(0) @map("workday_start")
+  workdayEnd   DateTime @default(dbgenerated("'18:30'::time")) @db.Time(0) @map("workday_end")
+  workDays     Int[]    @default(dbgenerated("'{1,2,3,4,5}'::smallint[]")) @map("work_days")
+  voiceEnabled Boolean  @default(true) @map("voice_enabled")
+  createdAt    DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  channels        Channel[]
+  projects        Project[]
+  tasks           Task[]
+  events          Event[]
+  dailySessions   DailySession[]
+  notifications   Notification[]
+  interactionLogs InteractionLog[]
+  reports         Report[]
+  engagementState EngagementState?
+
+  @@map("users")
+}
+
+model Channel {
+  channelId   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("channel_id")
+  userId      String   @db.Uuid @map("user_id")
+  channelType String   @map("channel_type")
+  address     Json
+  isVerified  Boolean  @default(false) @map("is_verified")
+  priority    Int      @default(1) @db.SmallInt
+  quietHours  Json?    @map("quiet_hours")
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  user User @relation(fields: [userId], references: [userId])
+
+  // Unique constraint is an expression index in the migration (JSONB ≠ B-tree unique).
+  @@map("channels")
+}
+
+model Project {
+  projectId    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("project_id")
+  userId       String   @db.Uuid @map("user_id")
+  name         String
+  status       String   @default("ACTIVE")
+  color        String?
+  obsidianPath String?  @map("obsidian_path")
+  createdAt    DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [userId])
+  tasks Task[]
+
+  @@map("projects")
+}
+
+// ============================================================
+// TASKS AND EVENTS
+// ============================================================
+
+model Task {
+  taskId       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("task_id")
+  userId       String    @db.Uuid @map("user_id")
+  projectId    String?   @db.Uuid @map("project_id")
+  taskType     String    @map("task_type")
+  title        String
+  description  String?
+  payload      Json?
+  obsidianRef  Json?     @map("obsidian_ref")
+  status       String    @default("PENDING")
+  priority     Int       @default(3) @db.SmallInt
+  dueAt        DateTime? @db.Timestamptz(6) @map("due_at")
+  scheduledFor DateTime? @db.Date @map("scheduled_for")
+  deferCount   Int       @default(0) @map("defer_count")
+  completedAt  DateTime? @db.Timestamptz(6) @map("completed_at")
+  progressPct  Int?      @db.SmallInt @map("progress_pct")
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  user          User                @relation(fields: [userId], references: [userId])
+  project       Project?            @relation(fields: [projectId], references: [projectId])
+  statusHistory TaskStatusHistory[]
+  events        Event[]
+  reminders     Reminder[]
+
+  @@map("tasks")
+}
+
+model TaskStatusHistory {
+  historyId  BigInt   @id @default(autoincrement()) @map("history_id")
+  taskId     String   @db.Uuid @map("task_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  changedBy  String   @map("changed_by")
+  note       String?
+  changedAt  DateTime @default(now()) @db.Timestamptz(6) @map("changed_at")
+
+  task Task @relation(fields: [taskId], references: [taskId])
+
+  @@map("task_status_history")
+}
+
+model Event {
+  eventId     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("event_id")
+  userId      String    @db.Uuid @map("user_id")
+  taskId      String?   @db.Uuid @map("task_id")
+  eventType   String    @map("event_type")
+  title       String
+  startsAt    DateTime  @db.Timestamptz(6) @map("starts_at")
+  endsAt      DateTime? @db.Timestamptz(6) @map("ends_at")
+  location    String?
+  externalRef Json?     @map("external_ref")
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  user      User       @relation(fields: [userId], references: [userId])
+  task      Task?      @relation(fields: [taskId], references: [taskId])
+  reminders Reminder[]
+
+  @@map("events")
+}
+
+model Reminder {
+  reminderId       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("reminder_id")
+  taskId           String?   @db.Uuid @map("task_id")
+  eventId          String?   @db.Uuid @map("event_id")
+  remindAt         DateTime  @db.Timestamptz(6) @map("remind_at")
+  rule             Json?
+  escalationPolicy Json?     @map("escalation_policy")
+  status           String    @default("SCHEDULED")
+  jobId            String?   @map("job_id")
+
+  task  Task?  @relation(fields: [taskId], references: [taskId])
+  event Event? @relation(fields: [eventId], references: [eventId])
+
+  @@map("reminders")
+}
+
+// ============================================================
+// PROACTIVITY AND SESSIONS
+// ============================================================
+
+model DailySession {
+  sessionId   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("session_id")
+  userId      String    @db.Uuid @map("user_id")
+  sessionDate DateTime  @db.Date @map("session_date")
+  sessionType String    @map("session_type")
+  status      String    @default("PENDING")
+  triggeredAt DateTime? @db.Timestamptz(6) @map("triggered_at")
+  completedAt DateTime? @db.Timestamptz(6) @map("completed_at")
+  summary     Json?
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@unique([userId, sessionDate, sessionType])
+  @@map("daily_sessions")
+}
+
+model EngagementState {
+  userId            String    @id @db.Uuid @map("user_id")
+  lastInteractionAt DateTime? @db.Timestamptz(6) @map("last_interaction_at")
+  lastChannel       String?   @map("last_channel")
+  currentState      String    @default("IDLE") @map("current_state")
+  nudgeLevel        Int       @default(0) @db.SmallInt @map("nudge_level")
+  stateChangedAt    DateTime  @default(now()) @db.Timestamptz(6) @map("state_changed_at")
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@map("engagement_state")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// Partitioned by RANGE (created_at). PostgreSQL requires the partition key
+// to be part of the PK, so PK is (notification_id, created_at).
+// dedup_key uniqueness is enforced per-partition via expression index.
+// ============================================================
+
+model Notification {
+  notificationId String    @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("notification_id")
+  userId         String    @db.Uuid @map("user_id")
+  sourceType     String    @map("source_type")
+  sourceId       String?   @db.Uuid @map("source_id")
+  title          String
+  body           String
+  requiresAck    Boolean   @default(false) @map("requires_ack")
+  ackedAt        DateTime? @db.Timestamptz(6) @map("acked_at")
+  dedupKey       String?   @map("dedup_key")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@id([notificationId, createdAt])
+  @@map("notifications")
+}
+
+// Partitioned table — actual DB PK is (delivery_id, created_at).
+// delivery_id is GENERATED ALWAYS AS IDENTITY (globally unique sequence).
+// Prisma uses delivery_id as single PK; queries by it work correctly across partitions.
+model NotificationDelivery {
+  deliveryId     BigInt    @id @default(autoincrement()) @map("delivery_id")
+  notificationId String    @db.Uuid @map("notification_id")
+  channelType    String    @map("channel_type")
+  attempt        Int       @default(1) @db.SmallInt
+  status         String    @default("QUEUED")
+  providerRef    String?   @map("provider_ref")
+  sentAt         DateTime? @db.Timestamptz(6) @map("sent_at")
+  statusAt       DateTime? @db.Timestamptz(6) @map("status_at")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@map("notification_deliveries")
+}
+
+// ============================================================
+// LOGS
+// Partitioned by RANGE (created_at). Actual DB PK is (log_id, created_at).
+// log_id is a globally unique GENERATED ALWAYS AS IDENTITY sequence.
+// ============================================================
+
+model InteractionLog {
+  logId       BigInt   @id @default(autoincrement()) @map("log_id")
+  userId      String   @db.Uuid @map("user_id")
+  channelType String   @map("channel_type")
+  direction   String
+  modality    String
+  content     String?
+  audioRef    String?  @map("audio_ref")
+  intent      String?
+  sessionId   String?  @db.Uuid @map("session_id")
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@map("interaction_logs")
+}
+
+// ============================================================
+// REPORTS
+// ============================================================
+
+model Report {
+  reportId     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("report_id")
+  userId       String   @db.Uuid @map("user_id")
+  periodType   String   @map("period_type")
+  periodStart  DateTime @db.Date @map("period_start")
+  periodEnd    DateTime @db.Date @map("period_end")
+  metrics      Json
+  fileRef      String?  @map("file_ref")
+  obsidianPath String?  @map("obsidian_path")
+  generatedAt  DateTime @default(now()) @db.Timestamptz(6) @map("generated_at")
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@unique([userId, periodType, periodStart])
+  @@map("reports")
+}
+
+// ============================================================
+// VAULT SYNC LOG (Annexe A §A.2.4)
+// ============================================================
+
+model VaultSyncLog {
+  syncId     BigInt   @id @default(autoincrement()) @map("sync_id")
+  direction  String
+  filePath   String   @map("file_path")
+  entityType String?  @map("entity_type")
+  entityId   String?  @db.Uuid @map("entity_id")
+  action     String
+  detail     Json?
+  syncedAt   DateTime @default(now()) @db.Timestamptz(6) @map("synced_at")
+
+  @@map("vault_sync_log")
+}

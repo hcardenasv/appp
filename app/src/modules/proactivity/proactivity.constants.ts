@@ -2,6 +2,7 @@ export const QUEUES = {
   CHECKIN:         'checkin',
   CHECKOUT:        'checkout',
   INACTIVITY_SCAN: 'inactivity-scan',
+  REMINDERS:       'reminders',
 } as const;
 
 export const JOB_NAMES = {

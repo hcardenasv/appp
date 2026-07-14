@@ -13,9 +13,11 @@ import { CheckoutProcessor } from './modules/proactivity/checkout.processor';
 import { InactivityScanProcessor } from './modules/proactivity/inactivity-scan.processor';
 import { QueueService } from './modules/proactivity/queue.service';
 import { QUEUES } from './modules/proactivity/proactivity.constants';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ReminderProcessor } from './modules/notifications/reminder.processor';
 import { Inject } from '@nestjs/common';
 
-/** Crea y gestiona los BullMQ Workers para cada cola del motor de proactividad. */
+/** Crea y gestiona los BullMQ Workers para cada cola del motor de proactividad y notificaciones. */
 @Injectable()
 class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkerManagerService.name);
@@ -25,6 +27,7 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
     private readonly checkinProcessor:         CheckinProcessor,
     private readonly checkoutProcessor:        CheckoutProcessor,
     private readonly inactivityScanProcessor:  InactivityScanProcessor,
+    private readonly reminderProcessor:        ReminderProcessor,
     private readonly queueService:             QueueService,
     @Inject(REDIS_CLIENT) private readonly redis: IORedis,
   ) {}
@@ -48,6 +51,11 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
         (job) => this.inactivityScanProcessor.process(job),
         { ...conn, concurrency: 1 },
       ),
+      new Worker(
+        QUEUES.REMINDERS,
+        (job) => this.reminderProcessor.process(job),
+        { ...conn, concurrency: 10 },
+      ),
     );
 
     this.workers.forEach((w) => {
@@ -59,7 +67,7 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
       );
     });
 
-    this.logger.log('BullMQ workers iniciados (checkin, checkout, inactivity-scan)');
+    this.logger.log('BullMQ workers iniciados (checkin, checkout, inactivity-scan, reminders)');
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -74,6 +82,7 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
     DatabaseModule,
     RedisModule,
     ProactivityModule,
+    NotificationsModule,
   ],
   providers: [WorkerManagerService],
 })

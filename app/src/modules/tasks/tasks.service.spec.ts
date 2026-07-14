@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { PrismaService } from '../../database/prisma.service';
+import { ReminderSchedulerService } from '../notifications/reminder-scheduler.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
 
@@ -27,6 +28,12 @@ const makeTask = (overrides = {}) => ({
   ...overrides,
 });
 
+const mockReminderScheduler = {
+  scheduleReminder: jest.fn().mockResolvedValue(undefined),
+  cancelReminder:   jest.fn().mockResolvedValue(undefined),
+  cancelByTask:     jest.fn().mockResolvedValue(undefined),
+};
+
 describe('TasksService', () => {
   let service: TasksService;
   let prisma: jest.Mocked<PrismaService>;
@@ -42,6 +49,8 @@ describe('TasksService', () => {
   });
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const mockPrisma = {
       task: {
         create: jest.fn(),
@@ -50,14 +59,15 @@ describe('TasksService', () => {
         update: jest.fn(),
       },
       taskStatusHistory: { create: jest.fn() },
-      reminder: { createMany: jest.fn() },
+      reminder: { createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TasksService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService,           useValue: mockPrisma },
+        { provide: ReminderSchedulerService, useValue: mockReminderScheduler },
       ],
     }).compile();
 
@@ -97,6 +107,8 @@ describe('TasksService', () => {
       tx.taskStatusHistory.create.mockResolvedValue({});
       tx.reminder.createMany.mockResolvedValue({ count: 3 });
       (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      // findMany post-tx para encolar jobs (devuelve vacío — se testea en ReminderSchedulerService)
+      (prisma.reminder.findMany as jest.Mock).mockResolvedValue([]);
 
       const dto: CreateTaskDto = {
         taskType: 'MEETING',
@@ -218,6 +230,36 @@ describe('TasksService', () => {
 
       const updateCall = tx.task.update.mock.calls[0][0];
       expect(updateCall.data.completedAt).toBeInstanceOf(Date);
+    });
+
+    it('cancela reminders al completar (DONE)', async () => {
+      const task = makeTask({ status: 'IN_PROGRESS' });
+      const completedTask = makeTask({ status: 'DONE', completedAt: new Date() });
+
+      (prisma.task.findUnique as jest.Mock).mockResolvedValue(task);
+      const tx = makeTxMock();
+      tx.task.update.mockResolvedValue(completedTask);
+      tx.taskStatusHistory.create.mockResolvedValue({});
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+
+      await service.updateStatus('uuid-task-1', 'uuid-user-1', { toStatus: 'DONE' });
+
+      expect(mockReminderScheduler.cancelByTask).toHaveBeenCalledWith('uuid-task-1');
+    });
+
+    it('cancela reminders al cancelar (CANCELLED)', async () => {
+      const task = makeTask({ status: 'PENDING' });
+      const cancelledTask = makeTask({ status: 'CANCELLED' });
+
+      (prisma.task.findUnique as jest.Mock).mockResolvedValue(task);
+      const tx = makeTxMock();
+      tx.task.update.mockResolvedValue(cancelledTask);
+      tx.taskStatusHistory.create.mockResolvedValue({});
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+
+      await service.updateStatus('uuid-task-1', 'uuid-user-1', { toStatus: 'CANCELLED' });
+
+      expect(mockReminderScheduler.cancelByTask).toHaveBeenCalledWith('uuid-task-1');
     });
   });
 });

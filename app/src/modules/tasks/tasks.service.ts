@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Task, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { ReminderSchedulerService } from '../notifications/reminder-scheduler.service';
 import {
   assertValidTransition,
   InvalidTransitionError,
@@ -13,7 +14,12 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(TasksService.name);
+
+  constructor(
+    private readonly prisma:             PrismaService,
+    private readonly reminderScheduler:  ReminderSchedulerService,
+  ) {}
 
   async create(userId: string, dto: CreateTaskDto): Promise<Task> {
     return this.prisma.$transaction(async (tx) => {
@@ -61,6 +67,20 @@ export class TasksService {
 
       return task;
     });
+
+    // Encolar delayed jobs para los reminders creados (fuera de la TX para no bloquearla)
+    if (dto.dueAt) {
+      const reminders = await this.prisma.reminder.findMany({
+        where: { taskId: task.taskId, status: 'SCHEDULED' },
+      });
+      for (const r of reminders) {
+        await this.reminderScheduler.scheduleReminder(r).catch((err: unknown) =>
+          this.logger.warn(`No se pudo encolar reminder ${r.reminderId}`, err),
+        );
+      }
+    }
+
+    return task;
   }
 
   async findByUser(userId: string, activeOnly = true): Promise<Task[]> {
@@ -105,8 +125,8 @@ export class TasksService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.task.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.task.update({
         where: { taskId },
         data: {
           status: to,
@@ -128,8 +148,17 @@ export class TasksService {
         },
       });
 
-      return updated;
+      return result;
     });
+
+    // Cancelar reminders pendientes cuando la tarea finaliza
+    if (to === 'DONE' || to === 'CANCELLED') {
+      await this.reminderScheduler.cancelByTask(taskId).catch((err: unknown) =>
+        this.logger.warn(`No se pudieron cancelar reminders de tarea ${taskId}`, err),
+      );
+    }
+
+    return updated;
   }
 
   async update(taskId: string, userId: string, dto: UpdateTaskDto): Promise<Task> {

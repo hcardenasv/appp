@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { Bot } from 'grammy';
 import { UsersService } from '../users/users.service';
+import { ConversationService } from '../conversation/conversation.service';
 import type { AppContext } from './bot.context';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly usersService: UsersService,
+    private readonly conversationService: ConversationService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -74,24 +76,29 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           `El sistema te contactará proactivamente para el check-in matutino ` +
           `y el check-out vespertino. También recibirás recordatorios de tus ` +
           `tareas importantes.\n\n` +
-          `_Próximamente: gestión de tareas por lenguaje natural._`,
+          `Puedes escribirme en lenguaje natural: "tengo reunión con el cliente ` +
+          `el viernes a las 10", "ya terminé el informe", "¿qué tengo pendiente?"`,
         { parse_mode: 'Markdown' },
       );
     });
 
-    // Fallback: mensajes de texto libres (NLU llega en Hito 4)
+    // NLU: mensajes de texto libres via Claude API
     bot.on('message:text', async (ctx) => {
       if (!ctx.appUser) {
-        await ctx.reply(
-          'No te encuentro registrado. Usa /start para comenzar.',
-        );
+        await ctx.reply('No te encuentro registrado. Usa /start para comenzar.');
         return;
       }
-      await ctx.reply(
-        'Recibido ✅ La gestión de tareas por lenguaje natural estará ' +
-          'disponible muy pronto. Por ahora usa los menús interactivos ' +
-          'del check-in y check-out.',
-      );
+      try {
+        const response = await this.conversationService.processMessage(
+          ctx.appUser,
+          ctx.message.text,
+          'TELEGRAM',
+        );
+        await ctx.reply(response);
+      } catch (err) {
+        this.logger.error('Error procesando mensaje de texto', err);
+        await ctx.reply('Ocurrió un error. Intenta nuevamente en un momento.');
+      }
     });
   }
 

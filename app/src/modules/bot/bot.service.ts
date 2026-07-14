@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { Bot } from 'grammy';
 import { UsersService } from '../users/users.service';
 import { ConversationService } from '../conversation/conversation.service';
+import { TasksService } from '../tasks/tasks.service';
+import { EngagementService } from '../proactivity/engagement.service';
 import type { AppContext } from './bot.context';
 
 @Injectable()
@@ -14,6 +16,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly usersService: UsersService,
     private readonly conversationService: ConversationService,
+    private readonly tasksService: TasksService,
+    private readonly engagementService: EngagementService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -35,28 +39,31 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private registerHandlers(bot: Bot<AppContext>): void {
-    // Middleware: resuelve appUser en cada update entrante
+    // Middleware: resuelve appUser + registra interacción para engagement
     bot.use(async (ctx, next) => {
       if (ctx.from) {
-        ctx.appUser =
-          (await this.usersService.findByTelegramChatId(ctx.from.id)) ??
-          undefined;
+        const user = await this.usersService.findByTelegramChatId(ctx.from.id);
+        ctx.appUser = user ?? undefined;
+        if (user) {
+          await this.engagementService
+            .recordInteraction(user.userId, 'TELEGRAM')
+            .catch(() => undefined);
+        }
       }
       await next();
     });
 
     bot.command('start', async (ctx) => {
       if (!ctx.from) return;
-      const { user, isNew } = await this.usersService.findOrCreateFromTelegram(
-        ctx.from,
-      );
+      const { user, isNew } = await this.usersService.findOrCreateFromTelegram(ctx.from);
       const name = user.displayName.split(' ')[0];
 
       if (isNew) {
         await ctx.reply(
           `¡Hola, ${name}! 👋 Soy tu asistente personal APPP.\n\n` +
             `Estoy aquí para ayudarte a gestionar tus tareas y mantenerte en ` +
-            `foco durante el día. Pronto te haré el primer check-in matutino.\n\n` +
+            `foco durante el día. Recibirás un check-in matutino cuando empiece ` +
+            `tu jornada laboral.\n\n` +
             `Usa /ayuda para ver qué puedo hacer.`,
         );
       } else {
@@ -74,12 +81,31 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           `• /start — Registrarse o dar la bienvenida de vuelta\n` +
           `• /ayuda — Mostrar este mensaje\n\n` +
           `El sistema te contactará proactivamente para el check-in matutino ` +
-          `y el check-out vespertino. También recibirás recordatorios de tus ` +
-          `tareas importantes.\n\n` +
+          `y el check-out vespertino. También recibirás recordatorios de tus tareas.\n\n` +
           `Puedes escribirme en lenguaje natural: "tengo reunión con el cliente ` +
           `el viernes a las 10", "ya terminé el informe", "¿qué tengo pendiente?"`,
         { parse_mode: 'Markdown' },
       );
+    });
+
+    // Botones inline del check-out: co:{done|defer|cancel}:{taskId}
+    bot.on('callback_query:data', async (ctx) => {
+      const data = ctx.callbackQuery.data;
+      if (!data?.startsWith('co:')) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+
+      if (!ctx.appUser) {
+        await ctx.answerCallbackQuery({ text: 'No estás registrado. Usa /start.' });
+        return;
+      }
+
+      const parts  = data.split(':');
+      const action = parts[1];
+      const taskId = parts[2];
+
+      await this.handleCheckoutCallback(ctx, ctx.appUser.userId, action, taskId);
     });
 
     // NLU: mensajes de texto libres via Claude API
@@ -102,16 +128,53 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private startPolling(bot: Bot<AppContext>): void {
-    bot
-      .start({
-        onStart: (info) =>
-          this.logger.log(`Bot @${info.username} en long polling`),
-      })
-      .catch((err) => this.logger.error('Bot detenido con error', err));
+  private async handleCheckoutCallback(
+    ctx: AppContext,
+    userId: string,
+    action: string,
+    taskId: string,
+  ): Promise<void> {
+    let text: string;
+    try {
+      switch (action) {
+        case 'done':
+          await this.tasksService.updateStatus(taskId, userId, { toStatus: 'DONE' });
+          text = '✅ ¡Marcada como hecha!';
+          break;
+        case 'defer': {
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          tomorrow.setHours(9, 0, 0, 0);
+          await this.tasksService.updateStatus(taskId, userId, {
+            toStatus: 'DEFERRED',
+            newScheduledFor: tomorrow.toISOString(),
+          });
+          text = '⏭ Pospuesta para mañana.';
+          break;
+        }
+        case 'cancel':
+          await this.tasksService.updateStatus(taskId, userId, { toStatus: 'CANCELLED' });
+          text = '❌ Cancelada.';
+          break;
+        default:
+          text = 'Acción no reconocida.';
+      }
+    } catch (err) {
+      text = 'No se pudo actualizar. Puede que la tarea ya fue modificada.';
+      this.logger.warn(`Error en callback checkout ${action}:${taskId}`, err);
+    }
+
+    await ctx.answerCallbackQuery({ text });
+
+    // Editar el mensaje para quitar los botones y mostrar el resultado
+    if (ctx.callbackQuery.message) {
+      const original = ctx.callbackQuery.message.text ?? '';
+      await ctx
+        .editMessageText(`${original}\n${text}`, { reply_markup: { inline_keyboard: [] } })
+        .catch(() => undefined);
+    }
   }
 
-  // Para uso de otros módulos (p. ej. NotificationsModule enviando mensajes)
   getBot(): Bot<AppContext> | null {
     return this.bot;
   }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { EngagementService } from './engagement.service';
 import { TelegramSenderService } from './telegram-sender.service';
@@ -37,7 +38,7 @@ export class InactivityScanProcessor {
   }
 
   private async evaluateUser(
-    state: Awaited<ReturnType<typeof this.prisma.engagementState.findMany>>[0],
+    state: Prisma.EngagementStateGetPayload<{ include: { user: true } }>,
   ): Promise<void> {
     const { userId, currentState, stateChangedAt, nudgeLevel } = state;
     const user = state.user;

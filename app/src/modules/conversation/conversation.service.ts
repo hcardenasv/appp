@@ -1,12 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  MessageParam,
-  TextBlock,
-  ToolUseBlock,
-} from '@anthropic-ai/sdk';
-import type { IORedis } from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
@@ -30,7 +25,7 @@ export class ConversationService {
     private readonly config: ConfigService,
     private readonly tasksService: TasksService,
     private readonly prisma: PrismaService,
-    @Inject(REDIS_CLIENT) private readonly redis: IORedis,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
     const apiKey = config.get<string>('ANTHROPIC_API_KEY', '');
     this.anthropic = new Anthropic({ apiKey });
@@ -76,7 +71,7 @@ export class ConversationService {
   }
 
   private async runToolLoop(
-    messages: MessageParam[],
+    messages: Anthropic.MessageParam[],
     systemPrompt: string,
     userId: string,
   ): Promise<{ text: string; intent: string | null }> {
@@ -94,7 +89,7 @@ export class ConversationService {
 
       if (apiResponse.stop_reason === 'end_turn') {
         const text = apiResponse.content
-          .filter((b): b is TextBlock => b.type === 'text')
+          .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')
           .map((b) => b.text)
           .join('');
         return { text: text || 'Entendido.', intent };
@@ -104,11 +99,10 @@ export class ConversationService {
         current.push({ role: 'assistant', content: apiResponse.content });
 
         const toolUseBlocks = apiResponse.content.filter(
-          (b): b is ToolUseBlock => b.type === 'tool_use',
+          (b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use',
         );
 
-        // Ejecutar tools en secuencia (las tools pueden depender entre sí en un turno)
-        const toolResults: MessageParam = {
+        const toolResults: Anthropic.MessageParam = {
           role: 'user',
           content: await Promise.all(
             toolUseBlocks.map(async (block) => {
@@ -172,10 +166,8 @@ export class ConversationService {
             input.taskId as string,
             userId,
             {
-              ...(input.newScheduledFor && {
-                scheduledFor: input.newScheduledFor as string,
-              }),
-              ...(input.newDueAt && { dueAt: input.newDueAt as string }),
+              ...(input.newScheduledFor ? { scheduledFor: input.newScheduledFor as string } : {}),
+              ...(input.newDueAt ? { dueAt: input.newDueAt as string } : {}),
             },
           );
           return JSON.stringify({
@@ -251,16 +243,16 @@ export class ConversationService {
     );
   }
 
-  private async loadSession(userId: string): Promise<MessageParam[]> {
+  private async loadSession(userId: string): Promise<Anthropic.MessageParam[]> {
     try {
       const raw = await this.redis.get(SESSION_KEY(userId));
-      return raw ? (JSON.parse(raw) as MessageParam[]) : [];
+      return raw ? (JSON.parse(raw) as Anthropic.MessageParam[]) : [];
     } catch {
       return [];
     }
   }
 
-  private async saveSession(userId: string, messages: MessageParam[]): Promise<void> {
+  private async saveSession(userId: string, messages: Anthropic.MessageParam[]): Promise<void> {
     const trimmed = messages.slice(-SESSION_MAX_MESSAGES);
     await this.redis.set(SESSION_KEY(userId), JSON.stringify(trimmed), 'EX', SESSION_TTL_SEC);
   }

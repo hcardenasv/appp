@@ -1,7 +1,7 @@
-import type { Tool } from '@anthropic-ai/sdk';
+import Anthropic from '@anthropic-ai/sdk';
 import { TASK_TYPES } from '../tasks/dto/create-task.dto';
 
-export const CONVERSATION_TOOLS: Tool[] = [
+export const CONVERSATION_TOOLS: Anthropic.Messages.Tool[] = [
   {
     name: 'create_task',
     description:

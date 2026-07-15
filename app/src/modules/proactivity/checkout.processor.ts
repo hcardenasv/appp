@@ -1,19 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { EngagementService } from './engagement.service';
 import { TelegramSenderService } from './telegram-sender.service';
+import { QueueService } from './queue.service';
 import { localDateAsUtcMidnight, localDayRange } from '../../utils/timezone';
-import { ENGAGEMENT_STATES } from './proactivity.constants';
+import { ENGAGEMENT_STATES, JOB_NAMES } from './proactivity.constants';
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
 @Injectable()
 export class CheckoutProcessor {
   private readonly logger = new Logger(CheckoutProcessor.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly engagementService: EngagementService,
-    private readonly telegramSender: TelegramSenderService,
+    private readonly prisma:             PrismaService,
+    private readonly engagementService:  EngagementService,
+    private readonly telegramSender:     TelegramSenderService,
+    private readonly queueService:       QueueService,
   ) {}
 
   async process(job: Job<{ userId: string }>): Promise<void> {
@@ -88,6 +93,15 @@ export class CheckoutProcessor {
     }
 
     await this.engagementService.transitionState(userId, ENGAGEMENT_STATES.AWAITING_CHECKOUT);
+
+    // Fallback: si en 1 hora el usuario no completó el check-out, generar reporte de todos modos
+    const fallbackJobId = `daily-report:${userId}:${sessionDate.toISOString().slice(0, 10)}`;
+    await this.queueService.dailyReport.add(
+      JOB_NAMES.DAILY_REPORT,
+      { userId },
+      { delay: ONE_HOUR_MS, jobId: fallbackJobId, removeOnComplete: true, removeOnFail: 3 },
+    );
+
     this.logger.log(`Check-out disparado para ${userId}: ${todayTasks.length} tarea(s)`);
   }
 
@@ -98,7 +112,7 @@ export class CheckoutProcessor {
   ): Promise<void> {
     await this.prisma.dailySession.update({
       where: { userId_sessionDate_sessionType: { userId, sessionDate, sessionType: 'CHECKOUT' } },
-      data: { status: 'COMPLETED', completedAt: new Date(), summary },
+      data: { status: 'COMPLETED', completedAt: new Date(), summary: summary as Prisma.InputJsonValue },
     });
   }
 }

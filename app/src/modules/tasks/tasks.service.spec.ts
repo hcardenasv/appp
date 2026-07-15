@@ -81,7 +81,7 @@ describe('TasksService', () => {
       const tx = makeTxMock();
       tx.task.create.mockResolvedValue(task);
       tx.taskStatusHistory.create.mockResolvedValue({});
-      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx));
 
       const dto: CreateTaskDto = {
         taskType: 'MEETING',
@@ -106,7 +106,7 @@ describe('TasksService', () => {
       tx.task.create.mockResolvedValue(task);
       tx.taskStatusHistory.create.mockResolvedValue({});
       tx.reminder.createMany.mockResolvedValue({ count: 3 });
-      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx));
       // findMany post-tx para encolar jobs (devuelve vacío — se testea en ReminderSchedulerService)
       (prisma.reminder.findMany as jest.Mock).mockResolvedValue([]);
 
@@ -155,7 +155,7 @@ describe('TasksService', () => {
       const tx = makeTxMock();
       tx.task.update.mockResolvedValue(updatedTask);
       tx.taskStatusHistory.create.mockResolvedValue({});
-      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx));
 
       const dto: UpdateTaskStatusDto = { toStatus: 'IN_PROGRESS' };
       const result = await service.updateStatus('uuid-task-1', 'uuid-user-1', dto);
@@ -190,7 +190,7 @@ describe('TasksService', () => {
       const tx = makeTxMock();
       tx.task.update.mockResolvedValue(deferredTask);
       tx.taskStatusHistory.create.mockResolvedValue({});
-      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx));
 
       const dto: UpdateTaskStatusDto = { toStatus: 'DEFERRED', newScheduledFor };
       await service.updateStatus('uuid-task-1', 'uuid-user-1', dto);
@@ -223,7 +223,7 @@ describe('TasksService', () => {
       const tx = makeTxMock();
       tx.task.update.mockResolvedValue(completedTask);
       tx.taskStatusHistory.create.mockResolvedValue({});
-      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx));
 
       const dto: UpdateTaskStatusDto = { toStatus: 'DONE' };
       await service.updateStatus('uuid-task-1', 'uuid-user-1', dto);
@@ -240,7 +240,7 @@ describe('TasksService', () => {
       const tx = makeTxMock();
       tx.task.update.mockResolvedValue(completedTask);
       tx.taskStatusHistory.create.mockResolvedValue({});
-      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx));
 
       await service.updateStatus('uuid-task-1', 'uuid-user-1', { toStatus: 'DONE' });
 
@@ -255,7 +255,7 @@ describe('TasksService', () => {
       const tx = makeTxMock();
       tx.task.update.mockResolvedValue(cancelledTask);
       tx.taskStatusHistory.create.mockResolvedValue({});
-      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: typeof tx) => unknown) => fn(tx));
+      (prisma.$transaction as jest.Mock).mockImplementation((fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx));
 
       await service.updateStatus('uuid-task-1', 'uuid-user-1', { toStatus: 'CANCELLED' });
 

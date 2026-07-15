@@ -15,7 +15,18 @@ import { QueueService } from './modules/proactivity/queue.service';
 import { QUEUES } from './modules/proactivity/proactivity.constants';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReminderProcessor } from './modules/notifications/reminder.processor';
+import { ReportsModule } from './modules/reports/reports.module';
+import { DailyReportProcessor } from './modules/reports/daily-report.processor';
 import { Inject } from '@nestjs/common';
+
+function bullmqConn(redisUrl: string) {
+  const u = new URL(redisUrl);
+  return {
+    host: u.hostname,
+    port: parseInt(u.port || '6379', 10),
+    ...(u.password ? { password: decodeURIComponent(u.password) } : {}),
+  };
+}
 
 /** Crea y gestiona los BullMQ Workers para cada cola del motor de proactividad y notificaciones. */
 @Injectable()
@@ -28,12 +39,13 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
     private readonly checkoutProcessor:        CheckoutProcessor,
     private readonly inactivityScanProcessor:  InactivityScanProcessor,
     private readonly reminderProcessor:        ReminderProcessor,
+    private readonly dailyReportProcessor:     DailyReportProcessor,
     private readonly queueService:             QueueService,
-    @Inject(REDIS_CLIENT) private readonly redis: IORedis,
+    private readonly config:                   ConfigService,
   ) {}
 
   onModuleInit(): void {
-    const conn = { connection: this.redis };
+    const conn = { connection: bullmqConn(this.config.get<string>('REDIS_URL', 'redis://localhost:6379')) };
 
     this.workers.push(
       new Worker(
@@ -55,6 +67,11 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
         QUEUES.REMINDERS,
         (job) => this.reminderProcessor.process(job),
         { ...conn, concurrency: 10 },
+      ),
+      new Worker(
+        QUEUES.DAILY_REPORT,
+        (job) => this.dailyReportProcessor.process(job),
+        { ...conn, concurrency: 5 },
       ),
     );
 
@@ -78,11 +95,12 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: '../.env' }),
     DatabaseModule,
     RedisModule,
     ProactivityModule,
     NotificationsModule,
+    ReportsModule,
   ],
   providers: [WorkerManagerService],
 })

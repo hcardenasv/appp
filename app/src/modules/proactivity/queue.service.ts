@@ -1,8 +1,16 @@
-import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
-import type IORedis from 'ioredis';
-import { REDIS_CLIENT } from '../../redis/redis.module';
 import { QUEUES } from './proactivity.constants';
+
+function bullmqConn(redisUrl: string) {
+  const u = new URL(redisUrl);
+  return {
+    host: u.hostname,
+    port: parseInt(u.port || '6379', 10),
+    ...(u.password ? { password: decodeURIComponent(u.password) } : {}),
+  };
+}
 
 @Injectable()
 export class QueueService implements OnModuleDestroy {
@@ -10,13 +18,15 @@ export class QueueService implements OnModuleDestroy {
   readonly checkout:        Queue;
   readonly inactivityScan:  Queue;
   readonly reminders:       Queue;
+  readonly dailyReport:     Queue;
 
-  constructor(@Inject(REDIS_CLIENT) redis: IORedis) {
-    const conn = { connection: redis };
+  constructor(config: ConfigService) {
+    const conn = { connection: bullmqConn(config.get<string>('REDIS_URL', 'redis://localhost:6379')) };
     this.checkin        = new Queue(QUEUES.CHECKIN,         conn);
     this.checkout       = new Queue(QUEUES.CHECKOUT,        conn);
     this.inactivityScan = new Queue(QUEUES.INACTIVITY_SCAN, conn);
     this.reminders      = new Queue(QUEUES.REMINDERS,       conn);
+    this.dailyReport    = new Queue(QUEUES.DAILY_REPORT,    conn);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -25,6 +35,7 @@ export class QueueService implements OnModuleDestroy {
       this.checkout.close(),
       this.inactivityScan.close(),
       this.reminders.close(),
+      this.dailyReport.close(),
     ]);
   }
 }

@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { TasksService } from '../tasks/tasks.service';
 import { EngagementService } from '../proactivity/engagement.service';
+import { ReportsService } from '../reports/reports.service';
 import type { AppContext } from './bot.context';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly conversationService: ConversationService,
     private readonly tasksService: TasksService,
     private readonly engagementService: EngagementService,
+    private readonly reportsService: ReportsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -29,7 +31,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.bot = new Bot<AppContext>(token);
     this.registerHandlers(this.bot);
-    this.startPolling(this.bot);
+    void this.bot.start().catch((err) => this.logger.error('Bot polling error', err));
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -90,7 +92,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     // Botones inline del check-out: co:{done|defer|cancel}:{taskId}
     bot.on('callback_query:data', async (ctx) => {
-      const data = ctx.callbackQuery.data;
+      const data = ctx.callbackQuery!.data;
       if (!data?.startsWith('co:')) {
         await ctx.answerCallbackQuery();
         return;
@@ -167,12 +169,17 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await ctx.answerCallbackQuery({ text });
 
     // Editar el mensaje para quitar los botones y mostrar el resultado
-    if (ctx.callbackQuery.message) {
+    if (ctx.callbackQuery?.message) {
       const original = ctx.callbackQuery.message.text ?? '';
       await ctx
         .editMessageText(`${original}\n${text}`, { reply_markup: { inline_keyboard: [] } })
         .catch(() => undefined);
     }
+
+    // Si todas las tareas del día fueron resueltas, cerrar sesión y enviar reporte
+    await this.reportsService.tryCloseCheckout(userId).catch((err) =>
+      this.logger.error('Error al intentar cerrar checkout', err),
+    );
   }
 
   getBot(): Bot<AppContext> | null {

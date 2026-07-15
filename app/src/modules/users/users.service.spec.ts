@@ -102,7 +102,7 @@ describe('UsersService', () => {
       tx.user.create.mockResolvedValue(user);
       tx.channel.create.mockResolvedValue({});
       (prisma.$transaction as jest.Mock).mockImplementation(
-        (fn: (tx: typeof tx) => unknown) => fn(tx),
+        (fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx),
       );
 
       const tgUser = makeTelegramUser({ id: 123456789, first_name: 'Juan', last_name: 'Pérez' });
@@ -134,7 +134,7 @@ describe('UsersService', () => {
       tx.user.create.mockResolvedValue(user);
       tx.channel.create.mockResolvedValue({});
       (prisma.$transaction as jest.Mock).mockImplementation(
-        (fn: (tx: typeof tx) => unknown) => fn(tx),
+        (fn: (tx: ReturnType<typeof makeTxMock>) => unknown) => fn(tx),
       );
 
       const tgUser = makeTelegramUser({ first_name: 'Ana', last_name: undefined });

@@ -8,11 +8,12 @@ import { UsersModule } from './modules/users/users.module';
 import { ConversationModule } from './modules/conversation/conversation.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ProactivityModule } from './modules/proactivity/proactivity.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { BotModule } from './modules/bot/bot.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: '../.env' }),
     DatabaseModule,
     RedisModule,
     UsersModule,
@@ -20,6 +21,7 @@ import { BotModule } from './modules/bot/bot.module';
     ConversationModule,
     ProactivityModule,
     NotificationsModule,
+    ReportsModule,
     BotModule,
   ],
   controllers: [HealthController],

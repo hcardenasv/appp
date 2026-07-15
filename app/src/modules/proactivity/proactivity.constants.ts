@@ -3,12 +3,14 @@ export const QUEUES = {
   CHECKOUT:        'checkout',
   INACTIVITY_SCAN: 'inactivity-scan',
   REMINDERS:       'reminders',
+  DAILY_REPORT:    'daily-report',
 } as const;
 
 export const JOB_NAMES = {
   CHECKIN:         'checkin',
   CHECKOUT:        'checkout',
   INACTIVITY_SCAN: 'inactivity-scan',
+  DAILY_REPORT:    'daily-report',
 } as const;
 
 export const ENGAGEMENT_STATES = {

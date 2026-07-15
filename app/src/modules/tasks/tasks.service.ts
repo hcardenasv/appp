@@ -22,7 +22,7 @@ export class TasksService {
   ) {}
 
   async create(userId: string, dto: CreateTaskDto): Promise<Task> {
-    return this.prisma.$transaction(async (tx) => {
+    const task = await this.prisma.$transaction(async (tx) => {
       const task = await tx.task.create({
         data: {
           userId,

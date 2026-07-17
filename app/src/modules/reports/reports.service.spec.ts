@@ -178,6 +178,148 @@ describe('ReportsService', () => {
     });
   });
 
+  describe('calcPeriodMetrics', () => {
+    it('calcula correctamente con tareas mixtas', async () => {
+      const mon = new Date('2026-07-13T00:00:00Z');
+      const sun = new Date('2026-07-20T00:00:00Z');
+      prisma.task.findMany.mockResolvedValue([
+        { status: 'DONE',      completedAt: new Date('2026-07-14T10:00:00Z') },
+        { status: 'DONE',      completedAt: new Date('2026-07-14T11:00:00Z') },
+        { status: 'DEFERRED',  completedAt: null },
+        { status: 'CANCELLED', completedAt: null },
+      ]);
+
+      const metrics = await service.calcPeriodMetrics('uuid-user-1', {
+        gte: mon, lt: sun, dateGte: mon, dateLt: sun,
+      });
+
+      expect(metrics.planned).toBe(4);
+      expect(metrics.done).toBe(2);
+      expect(metrics.deferred).toBe(1);
+      expect(metrics.cancelled).toBe(1);
+      expect(metrics.completionRate).toBe(50);
+      expect(metrics.bestDay).toBeTruthy();
+    });
+
+    it('devuelve completionRate=0 si no hay tareas', async () => {
+      prisma.task.findMany.mockResolvedValue([]);
+      const metrics = await service.calcPeriodMetrics('uuid-user-1', {
+        gte: new Date(), lt: new Date(), dateGte: new Date(), dateLt: new Date(),
+      });
+      expect(metrics.completionRate).toBe(0);
+      expect(metrics.bestDay).toBeNull();
+    });
+  });
+
+  describe('formatWeeklyReport', () => {
+    const user = makeUser();
+
+    it('muestra tendencia positiva cuando mejora respecto a semana anterior', () => {
+      const metrics = { planned: 5, done: 4, deferred: 1, cancelled: 0, completionRate: 80, bestDay: 'martes' };
+      const text = service.formatWeeklyReport(user, metrics, 60, 3, '14–20 jul');
+      expect(text).toContain('📈');
+      expect(text).toContain('+20%');
+      expect(text).toContain('martes');
+      expect(text).toContain('🔥');
+    });
+
+    it('muestra tendencia negativa cuando empeora', () => {
+      const metrics = { planned: 5, done: 2, deferred: 3, cancelled: 0, completionRate: 40, bestDay: null };
+      const text = service.formatWeeklyReport(user, metrics, 80, 0, '14–20 jul');
+      expect(text).toContain('📉');
+      expect(text).toContain('-40%');
+    });
+
+    it('mensaje positivo con completionRate >= 80', () => {
+      const metrics = { planned: 5, done: 4, deferred: 0, cancelled: 0, completionRate: 80, bestDay: null };
+      const text = service.formatWeeklyReport(user, metrics, 0, 0, '14–20 jul');
+      expect(text).toContain('Excelente');
+    });
+
+    it('muestra texto por defecto sin tareas planificadas', () => {
+      const metrics = { planned: 0, done: 0, deferred: 0, cancelled: 0, completionRate: 0, bestDay: null };
+      const text = service.formatWeeklyReport(user, metrics, 0, 0, '14–20 jul');
+      expect(text).toContain('No hubo tareas planificadas');
+    });
+  });
+
+  describe('formatMonthlyReport', () => {
+    const user = makeUser();
+
+    it('incluye adherencia y mejor racha cuando > 0', () => {
+      const metrics = { planned: 20, done: 16, deferred: 4, cancelled: 0, completionRate: 80, bestDay: null };
+      const text = service.formatMonthlyReport(user, metrics, 90, 10, 'julio 2026');
+      expect(text).toContain('90%');
+      expect(text).toContain('10 días');
+    });
+
+    it('no muestra racha ni adherencia cuando son 0', () => {
+      const metrics = { planned: 5, done: 2, deferred: 0, cancelled: 3, completionRate: 40, bestDay: null };
+      const text = service.formatMonthlyReport(user, metrics, 0, 0, 'julio 2026');
+      expect(text).not.toContain('Adherencia');
+      expect(text).not.toContain('Mejor racha');
+    });
+  });
+
+  describe('generateWeeklyReport', () => {
+    it('no genera si el reporte ya existe (idempotencia)', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.report.findUnique.mockResolvedValue({ reportId: 'existing' });
+
+      await service.generateWeeklyReport('uuid-user-1');
+
+      expect(prisma.task.findMany).not.toHaveBeenCalled();
+      expect(mockTelegramSender.sendText).not.toHaveBeenCalled();
+    });
+
+    it('genera, persiste y envía el reporte semanal si no existe', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.report.findUnique.mockResolvedValue(null);
+      prisma.task.findMany.mockResolvedValue([
+        { status: 'DONE', completedAt: new Date() },
+      ]);
+      prisma.dailySession.findMany.mockResolvedValue([]);
+      prisma.report.create.mockResolvedValue({});
+      mockTelegramSender.getChatId.mockResolvedValue(123456);
+      mockTelegramSender.sendText.mockResolvedValue(undefined);
+
+      await service.generateWeeklyReport('uuid-user-1');
+
+      expect(prisma.report.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ periodType: 'WEEKLY' }) }),
+      );
+      expect(mockTelegramSender.sendText).toHaveBeenCalled();
+    });
+  });
+
+  describe('generateMonthlyReport', () => {
+    it('no genera si el reporte ya existe (idempotencia)', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.report.findUnique.mockResolvedValue({ reportId: 'existing' });
+
+      await service.generateMonthlyReport('uuid-user-1');
+
+      expect(prisma.task.findMany).not.toHaveBeenCalled();
+    });
+
+    it('genera, persiste y envía el reporte mensual si no existe', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.report.findUnique.mockResolvedValue(null);
+      prisma.task.findMany.mockResolvedValue([]);
+      prisma.dailySession.findMany.mockResolvedValue([]);
+      prisma.report.create.mockResolvedValue({});
+      mockTelegramSender.getChatId.mockResolvedValue(123456);
+      mockTelegramSender.sendText.mockResolvedValue(undefined);
+
+      await service.generateMonthlyReport('uuid-user-1');
+
+      expect(prisma.report.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ periodType: 'MONTHLY' }) }),
+      );
+      expect(mockTelegramSender.sendText).toHaveBeenCalled();
+    });
+  });
+
   describe('generateAndSend', () => {
     it('no genera si el reporte ya existe (idempotencia)', async () => {
       prisma.report.findUnique.mockResolvedValue({ reportId: 'existing' });

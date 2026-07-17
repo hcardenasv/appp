@@ -1,12 +1,14 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { localDateAsUtcMidnight, workdayToCron } from '../../utils/timezone';
+import { localDateAsUtcMidnight, workdayToCron, afterWorkdayCron } from '../../utils/timezone';
 import { QueueService } from './queue.service';
 import {
   INACTIVITY_SCAN_CRON,
   JOB_NAMES,
 } from './proactivity.constants';
+
+type PeriodType = 'WEEKLY' | 'MONTHLY';
 
 @Injectable()
 export class SchedulerService implements OnModuleInit {
@@ -35,6 +37,8 @@ export class SchedulerService implements OnModuleInit {
     await Promise.all([
       this.upsertCheckin(user),
       this.upsertCheckout(user),
+      this.upsertPeriodReport(user, 'WEEKLY'),
+      this.upsertPeriodReport(user, 'MONTHLY'),
     ]);
   }
 
@@ -79,6 +83,22 @@ export class SchedulerService implements OnModuleInit {
         name: JOB_NAMES.INACTIVITY_SCAN,
         data: {},
         opts: { removeOnComplete: true },
+      },
+    );
+  }
+
+  private async upsertPeriodReport(user: User, periodType: PeriodType): Promise<void> {
+    // Semanal: viernes 1h después del fin de jornada
+    // Mensual: día 1 de cada mes 1h después del fin de jornada
+    const cronSuffix = periodType === 'WEEKLY' ? '* * 5' : '1 * *';
+    const pattern = afterWorkdayCron(user.workdayEnd, cronSuffix);
+    await this.queueService.periodReport.upsertJobScheduler(
+      `${periodType.toLowerCase()}-report:${user.userId}`,
+      { pattern, tz: user.timezone },
+      {
+        name: JOB_NAMES.PERIOD_REPORT,
+        data: { userId: user.userId, periodType },
+        opts: { removeOnComplete: true, removeOnFail: 3 },
       },
     );
   }

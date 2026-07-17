@@ -50,3 +50,76 @@ export function workdayToCron(workdayTime: Date, workDays: number[]): string {
   const days    = workDays.join(',');
   return `${minutes} ${hours} * * ${days}`;
 }
+
+/**
+ * Retorna el cron string para un offset de minutos sobre workday_end,
+ * restringido a los días indicados en notación cron (e.g. '* * 5' para viernes).
+ */
+export function afterWorkdayCron(workdayEnd: Date, cronDaySuffix: string, offsetMin = 60): string {
+  const total = workdayEnd.getUTCHours() * 60 + workdayEnd.getUTCMinutes() + offsetMin;
+  const h = Math.floor(total / 60) % 24;
+  const m = total % 60;
+  return `${m} ${h} ${cronDaySuffix}`;
+}
+
+/** Rango de la semana ISO (lun–dom) en la TZ del usuario. weekOffset=-1 = semana anterior. */
+export function localWeekBounds(timezone: string, weekOffset = 0): {
+  gte: Date; lt: Date;          // Para columnas TIMESTAMPTZ (completedAt)
+  dateGte: Date; dateLt: Date;  // Para columnas DATE (scheduledFor)
+  label: string;                // "14–20 jul"
+} {
+  const now = new Date();
+  const localStr = new Intl.DateTimeFormat('sv', { timeZone: timezone }).format(now);
+  const [y, m, d] = localStr.split('-').map(Number);
+
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Dom
+  const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+  const mondayUTC = new Date(Date.UTC(y, m - 1, d - daysSinceMonday + weekOffset * 7));
+  const nextMondayUTC = new Date(mondayUTC.getTime() + 7 * 86_400_000);
+
+  const utcMs   = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
+  const localMs = new Date(now.toLocaleString('en-US', { timeZone: timezone })).getTime();
+  const offsetMs = utcMs - localMs;
+
+  const sunUTC = new Date(nextMondayUTC.getTime() - 86_400_000);
+  const fmt = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short', timeZone: timezone });
+  const label = `${fmt.format(mondayUTC)}–${fmt.format(sunUTC)}`;
+
+  return {
+    gte:     new Date(mondayUTC.getTime() + offsetMs),
+    lt:      new Date(nextMondayUTC.getTime() + offsetMs),
+    dateGte: mondayUTC,
+    dateLt:  nextMondayUTC,
+    label,
+  };
+}
+
+/** Rango del mes en la TZ del usuario. monthOffset=-1 = mes anterior. */
+export function localMonthBounds(timezone: string, monthOffset = 0): {
+  gte: Date; lt: Date;
+  dateGte: Date; dateLt: Date;
+  label: string;  // "julio 2026"
+} {
+  const now = new Date();
+  const localStr = new Intl.DateTimeFormat('sv', { timeZone: timezone }).format(now);
+  const [y, m] = localStr.split('-').map(Number);
+
+  const monthStart = new Date(Date.UTC(y, m - 1 + monthOffset, 1));
+  const nextMonth  = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
+
+  const utcMs   = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
+  const localMs = new Date(now.toLocaleString('en-US', { timeZone: timezone })).getTime();
+  const offsetMs = utcMs - localMs;
+
+  const label = new Intl.DateTimeFormat('es-CL', {
+    month: 'long', year: 'numeric', timeZone: timezone,
+  }).format(monthStart);
+
+  return {
+    gte:     new Date(monthStart.getTime() + offsetMs),
+    lt:      new Date(nextMonth.getTime() + offsetMs),
+    dateGte: monthStart,
+    dateLt:  nextMonth,
+    label,
+  };
+}

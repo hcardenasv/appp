@@ -17,7 +17,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ReminderProcessor } from './modules/notifications/reminder.processor';
 import { ReportsModule } from './modules/reports/reports.module';
 import { DailyReportProcessor } from './modules/reports/daily-report.processor';
-import { Inject } from '@nestjs/common';
+import { PeriodReportProcessor } from './modules/reports/period-report.processor';
 
 function bullmqConn(redisUrl: string) {
   const u = new URL(redisUrl);
@@ -40,6 +40,7 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
     private readonly inactivityScanProcessor:  InactivityScanProcessor,
     private readonly reminderProcessor:        ReminderProcessor,
     private readonly dailyReportProcessor:     DailyReportProcessor,
+    private readonly periodReportProcessor:    PeriodReportProcessor,
     private readonly queueService:             QueueService,
     private readonly config:                   ConfigService,
   ) {}
@@ -71,6 +72,11 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
       new Worker(
         QUEUES.DAILY_REPORT,
         (job) => this.dailyReportProcessor.process(job),
+        { ...conn, concurrency: 5 },
+      ),
+      new Worker(
+        QUEUES.PERIOD_REPORT,
+        (job) => this.periodReportProcessor.process(job),
         { ...conn, concurrency: 5 },
       ),
     );

@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { TelegramSenderService } from '../proactivity/telegram-sender.service';
 import { EngagementService } from '../proactivity/engagement.service';
-import { localDayRange, localDateAsUtcMidnight } from '../../utils/timezone';
+import { localDayRange, localDateAsUtcMidnight, localWeekBounds, localMonthBounds } from '../../utils/timezone';
 import { ENGAGEMENT_STATES } from '../proactivity/proactivity.constants';
 
 export interface DailyMetrics {
@@ -162,6 +162,219 @@ export class ReportsService {
       cur.setUTCDate(cur.getUTCDate() - 1);
     }
     return streak;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Reportes periódicos (semanal / mensual)
+  // ──────────────────────────────────────────────────────────────────
+
+  async generateWeeklyReport(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { userId } });
+    if (!user) return;
+
+    const current  = localWeekBounds(user.timezone, 0);
+    const previous = localWeekBounds(user.timezone, -1);
+    const periodStart = current.dateGte;
+
+    const existing = await this.prisma.report.findUnique({
+      where: { userId_periodType_periodStart: { userId, periodType: 'WEEKLY', periodStart } },
+    });
+    if (existing) return;
+
+    const curMetrics  = await this.calcPeriodMetrics(userId, current);
+    const prevMetrics = await this.calcPeriodMetrics(userId, previous);
+    const streak      = await this.calculateStreak(userId, user.timezone);
+
+    await this.prisma.report.create({
+      data: {
+        userId, periodType: 'WEEKLY',
+        periodStart, periodEnd: new Date(current.dateLt.getTime() - 86_400_000),
+        metrics: { ...curMetrics, prevWeekRate: prevMetrics.completionRate, streak } as Prisma.InputJsonValue,
+      },
+    });
+
+    const chatId = await this.telegramSender.getChatId(this.prisma, userId);
+    if (chatId) {
+      const text = this.formatWeeklyReport(user, curMetrics, prevMetrics.completionRate, streak, current.label);
+      await this.telegramSender.sendText(chatId, text, { parse_mode: 'Markdown' });
+    }
+    this.logger.log(`Reporte semanal enviado para ${userId} (${current.label})`);
+  }
+
+  async generateMonthlyReport(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { userId } });
+    if (!user) return;
+
+    const period = localMonthBounds(user.timezone, 0);
+    const periodStart = period.dateGte;
+
+    const existing = await this.prisma.report.findUnique({
+      where: { userId_periodType_periodStart: { userId, periodType: 'MONTHLY', periodStart } },
+    });
+    if (existing) return;
+
+    const metrics       = await this.calcPeriodMetrics(userId, period);
+    const adherenceRate = await this.calcAdherenceRate(userId, period.dateGte, period.dateLt);
+    const bestStreak    = await this.calcBestStreak(userId, period.dateGte, period.dateLt);
+
+    await this.prisma.report.create({
+      data: {
+        userId, periodType: 'MONTHLY',
+        periodStart, periodEnd: new Date(period.dateLt.getTime() - 86_400_000),
+        metrics: { ...metrics, adherenceRate, bestStreak } as Prisma.InputJsonValue,
+      },
+    });
+
+    const chatId = await this.telegramSender.getChatId(this.prisma, userId);
+    if (chatId) {
+      const text = this.formatMonthlyReport(user, metrics, adherenceRate, bestStreak, period.label);
+      await this.telegramSender.sendText(chatId, text, { parse_mode: 'Markdown' });
+    }
+    this.logger.log(`Reporte mensual enviado para ${userId} (${period.label})`);
+  }
+
+  async calcPeriodMetrics(
+    userId: string,
+    range: { gte: Date; lt: Date; dateGte: Date; dateLt: Date },
+  ): Promise<{ planned: number; done: number; deferred: number; cancelled: number; completionRate: number; bestDay: string | null }> {
+    const tasks = await this.prisma.task.findMany({
+      where: { userId, scheduledFor: { gte: range.dateGte, lt: range.dateLt } },
+      select: { status: true, completedAt: true },
+    });
+
+    const planned    = tasks.length;
+    const done       = tasks.filter(t => t.status === 'DONE').length;
+    const deferred   = tasks.filter(t => t.status === 'DEFERRED').length;
+    const cancelled  = tasks.filter(t => t.status === 'CANCELLED').length;
+    const completionRate = planned > 0 ? Math.round(done / planned * 100) : 0;
+
+    const byDay = new Map<string, number>();
+    for (const t of tasks.filter(t => t.status === 'DONE' && t.completedAt)) {
+      const day = new Intl.DateTimeFormat('es-CL', { weekday: 'long' }).format(t.completedAt!);
+      byDay.set(day, (byDay.get(day) ?? 0) + 1);
+    }
+    const bestDay = [...byDay.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+    return { planned, done, deferred, cancelled, completionRate, bestDay };
+  }
+
+  private async calcAdherenceRate(userId: string, dateGte: Date, dateLt: Date): Promise<number> {
+    const sessions = await this.prisma.dailySession.findMany({
+      where: { userId, sessionDate: { gte: dateGte, lt: dateLt } },
+      select: { status: true },
+    });
+    if (sessions.length === 0) return 0;
+    const completed = sessions.filter(s => s.status === 'COMPLETED').length;
+    return Math.round(completed / sessions.length * 100);
+  }
+
+  private async calcBestStreak(userId: string, dateGte: Date, dateLt: Date): Promise<number> {
+    const sessions = await this.prisma.dailySession.findMany({
+      where: { userId, status: 'COMPLETED', sessionDate: { gte: dateGte, lt: dateLt } },
+      select: { sessionDate: true, sessionType: true },
+      orderBy: { sessionDate: 'asc' },
+    });
+
+    const byDate = new Map<string, Set<string>>();
+    for (const s of sessions) {
+      const key = s.sessionDate.toISOString().slice(0, 10);
+      if (!byDate.has(key)) byDate.set(key, new Set());
+      byDate.get(key)!.add(s.sessionType);
+    }
+
+    const completeDays = [...byDate.entries()]
+      .filter(([, types]) => types.has('CHECKIN') && types.has('CHECKOUT'))
+      .map(([date]) => new Date(date + 'T00:00:00Z'))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (completeDays.length === 0) return 0;
+
+    let maxStreak = 1, cur = 1;
+    for (let i = 1; i < completeDays.length; i++) {
+      const diffDays = (completeDays[i].getTime() - completeDays[i - 1].getTime()) / 86_400_000;
+      cur = diffDays === 1 ? cur + 1 : 1;
+      if (cur > maxStreak) maxStreak = cur;
+    }
+    return maxStreak;
+  }
+
+  formatWeeklyReport(
+    user: User,
+    metrics: { planned: number; done: number; deferred: number; cancelled: number; completionRate: number; bestDay: string | null },
+    prevRate: number,
+    streak: number,
+    label: string,
+  ): string {
+    const name  = user.displayName.split(' ')[0];
+    const lines: string[] = [];
+    lines.push(`📊 *Resumen semanal — ${label}*`);
+    lines.push('');
+
+    if (metrics.planned === 0) {
+      lines.push('No hubo tareas planificadas esta semana.');
+    } else {
+      lines.push(`✅ Completadas: ${metrics.done} de ${metrics.planned} (${metrics.completionRate}%)`);
+      if (metrics.deferred > 0)  lines.push(`⏭ Postergadas: ${metrics.deferred}`);
+      if (metrics.cancelled > 0) lines.push(`❌ Canceladas: ${metrics.cancelled}`);
+      if (metrics.bestDay) {
+        lines.push('');
+        lines.push(`📅 *Mejor día:* ${metrics.bestDay}`);
+      }
+      if (prevRate > 0) {
+        const diff  = metrics.completionRate - prevRate;
+        const trend = diff > 0 ? `+${diff}%` : `${diff}%`;
+        const arrow = diff > 0 ? '📈' : diff < 0 ? '📉' : '➡️';
+        lines.push(`${arrow} vs. semana pasada: ${prevRate}% → ${metrics.completionRate}% (${trend})`);
+      }
+    }
+
+    if (streak > 0) {
+      lines.push('');
+      lines.push(`🔥 *Racha actual:* ${streak} día${streak === 1 ? '' : 's'}`);
+    }
+    lines.push('');
+    lines.push(metrics.completionRate >= 80
+      ? `¡Excelente semana, ${name}! 💪`
+      : metrics.completionRate >= 50
+        ? `Buena semana, ${name}. ¡A seguir! 👋`
+        : `La próxima semana mejor, ${name}. ¡Ánimo! 💪`);
+    return lines.join('\n');
+  }
+
+  formatMonthlyReport(
+    user: User,
+    metrics: { planned: number; done: number; deferred: number; cancelled: number; completionRate: number; bestDay: string | null },
+    adherenceRate: number,
+    bestStreak: number,
+    label: string,
+  ): string {
+    const name  = user.displayName.split(' ')[0];
+    const lines: string[] = [];
+    lines.push(`📊 *Resumen mensual — ${label}*`);
+    lines.push('');
+
+    if (metrics.planned === 0) {
+      lines.push('No hubo tareas planificadas este mes.');
+    } else {
+      lines.push(`✅ Completadas: ${metrics.done} de ${metrics.planned} (${metrics.completionRate}%)`);
+      if (metrics.deferred > 0)  lines.push(`⏭ Postergadas: ${metrics.deferred}`);
+      if (metrics.cancelled > 0) lines.push(`❌ Canceladas: ${metrics.cancelled}`);
+    }
+
+    if (adherenceRate > 0) {
+      lines.push('');
+      lines.push(`📅 *Adherencia al ritual:* ${adherenceRate}%`);
+    }
+    if (bestStreak > 0) {
+      lines.push(`🔥 *Mejor racha del mes:* ${bestStreak} día${bestStreak === 1 ? '' : 's'}`);
+    }
+    lines.push('');
+    lines.push(metrics.completionRate >= 80
+      ? `¡Excelente mes, ${name}! 🌟`
+      : metrics.completionRate >= 50
+        ? `Buen mes, ${name}. ¡Seguimos! 💪`
+        : `El próximo mes lo superamos, ${name}. 👋`);
+    return lines.join('\n');
   }
 
   formatReport(user: User, metrics: DailyMetrics, streak: number, missed: boolean): string {

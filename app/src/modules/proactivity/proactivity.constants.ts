@@ -4,6 +4,7 @@ export const QUEUES = {
   INACTIVITY_SCAN: 'inactivity-scan',
   REMINDERS:       'reminders',
   DAILY_REPORT:    'daily-report',
+  PERIOD_REPORT:   'period-report',
 } as const;
 
 export const JOB_NAMES = {
@@ -11,6 +12,7 @@ export const JOB_NAMES = {
   CHECKOUT:        'checkout',
   INACTIVITY_SCAN: 'inactivity-scan',
   DAILY_REPORT:    'daily-report',
+  PERIOD_REPORT:   'period-report',
 } as const;
 
 export const ENGAGEMENT_STATES = {

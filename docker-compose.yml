@@ -68,6 +68,21 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  vault-agent:
+    build: ./vault-agent
+    environment:
+      DATABASE_URL: postgres://appp:${PG_PASS}@postgres:5432/appp
+      VAULT_PATH: /vault
+      VAULT_SYNC_INTERVAL_MS: ${VAULT_SYNC_INTERVAL_MS:-60000}
+      NODE_ENV: ${NODE_ENV:-production}
+    volumes:
+      - vault:/vault
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
-  pgdata: {}
+  pgdata:  {}
   redisdata: {}
+  vault:   {}

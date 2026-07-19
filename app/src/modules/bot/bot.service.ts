@@ -6,7 +6,10 @@ import { ConversationService } from '../conversation/conversation.service';
 import { TasksService } from '../tasks/tasks.service';
 import { EngagementService } from '../proactivity/engagement.service';
 import { ReportsService } from '../reports/reports.service';
+import { NotificationService } from '../notifications/notification.service';
 import type { AppContext } from './bot.context';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -20,6 +23,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly tasksService: TasksService,
     private readonly engagementService: EngagementService,
     private readonly reportsService: ReportsService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -41,7 +45,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private registerHandlers(bot: Bot<AppContext>): void {
-    // Middleware: resuelve appUser + registra interacción para engagement
+    // Middleware: resuelve appUser + registra interacción + marca notificaciones ack'das
     bot.use(async (ctx, next) => {
       if (ctx.from) {
         const user = await this.usersService.findByTelegramChatId(ctx.from.id);
@@ -50,6 +54,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           await this.engagementService
             .recordInteraction(user.userId, 'TELEGRAM')
             .catch(() => undefined);
+          // Cualquier actividad del usuario cancela la escalación pendiente
+          await this.notificationService.markAcked(user.userId).catch(() => undefined);
         }
       }
       await next();
@@ -81,6 +87,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         `*APPP — Asistente Personal de Productividad*\n\n` +
           `Comandos disponibles:\n` +
           `• /start — Registrarse o dar la bienvenida de vuelta\n` +
+          `• /email \`tu@correo.com\` — Configurar email para notificaciones\n` +
           `• /ayuda — Mostrar este mensaje\n\n` +
           `El sistema te contactará proactivamente para el check-in matutino ` +
           `y el check-out vespertino. También recibirás recordatorios de tus tareas.\n\n` +
@@ -88,6 +95,23 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           `el viernes a las 10", "ya terminé el informe", "¿qué tengo pendiente?"`,
         { parse_mode: 'Markdown' },
       );
+    });
+
+    bot.command('email', async (ctx) => {
+      if (!ctx.appUser) {
+        await ctx.reply('No estás registrado. Usa /start primero.');
+        return;
+      }
+      const arg = ctx.message?.text?.split(' ').slice(1).join('').trim() ?? '';
+      if (!arg || !EMAIL_RE.test(arg)) {
+        await ctx.reply(
+          '📧 Uso: `/email tu@correo.com`\n\nTu email se usará para enviarte notificaciones importantes cuando no estés disponible en Telegram.',
+          { parse_mode: 'Markdown' },
+        );
+        return;
+      }
+      await this.usersService.updateEmail(ctx.appUser.userId, arg);
+      await ctx.reply(`✅ Email configurado: *${arg}*\n\nRecibirás notificaciones escaladas aquí si no respondes en Telegram.`, { parse_mode: 'Markdown' });
     });
 
     // Botones inline del check-out: co:{done|defer|cancel}:{taskId}

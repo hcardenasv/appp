@@ -18,6 +18,7 @@ import { ReminderProcessor } from './modules/notifications/reminder.processor';
 import { ReportsModule } from './modules/reports/reports.module';
 import { DailyReportProcessor } from './modules/reports/daily-report.processor';
 import { PeriodReportProcessor } from './modules/reports/period-report.processor';
+import { EscalationProcessor } from './modules/notifications/escalation.processor';
 
 function bullmqConn(redisUrl: string) {
   const u = new URL(redisUrl);
@@ -41,6 +42,7 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
     private readonly reminderProcessor:        ReminderProcessor,
     private readonly dailyReportProcessor:     DailyReportProcessor,
     private readonly periodReportProcessor:    PeriodReportProcessor,
+    private readonly escalationProcessor:      EscalationProcessor,
     private readonly queueService:             QueueService,
     private readonly config:                   ConfigService,
   ) {}
@@ -78,6 +80,11 @@ class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
         QUEUES.PERIOD_REPORT,
         (job) => this.periodReportProcessor.process(job),
         { ...conn, concurrency: 5 },
+      ),
+      new Worker(
+        QUEUES.ESCALATION,
+        (job) => this.escalationProcessor.process(job),
+        { ...conn, concurrency: 10 },
       ),
     );
 

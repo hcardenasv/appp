@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { TelegramSenderService } from '../proactivity/telegram-sender.service';
 import { EngagementService } from '../proactivity/engagement.service';
+import { EmailService } from '../notifications/email.service';
+import { buildDailyReportEmail, buildPeriodReportEmail } from '../notifications/email-templates';
 import { localDayRange, localDateAsUtcMidnight, localWeekBounds, localMonthBounds } from '../../utils/timezone';
 import { ENGAGEMENT_STATES } from '../proactivity/proactivity.constants';
 
@@ -25,6 +27,7 @@ export class ReportsService {
     private readonly prisma:             PrismaService,
     private readonly telegramSender:     TelegramSenderService,
     private readonly engagementService:  EngagementService,
+    private readonly emailService:       EmailService,
   ) {}
 
   /**
@@ -103,6 +106,18 @@ export class ReportsService {
     if (chatId) {
       const message = this.formatReport(resolvedUser, metrics, streak, missed);
       await this.telegramSender.sendText(chatId, message, { parse_mode: 'Markdown' });
+    }
+
+    // Enviar por email (si el usuario tiene email real)
+    if (this.emailService.isConfigured() && this.emailService.isRealEmail(resolvedUser.email)) {
+      const date = sessionDate.toISOString().slice(0, 10);
+      const { subject, html, text } = buildDailyReportEmail(
+        resolvedUser.displayName, date,
+        metrics.planned, metrics.done, metrics.deferred, metrics.cancelled, streak,
+      );
+      await this.emailService.sendHtml(resolvedUser.email, subject, html, text).catch(err =>
+        this.logger.error(`Error enviando reporte diario por email para ${userId}`, err),
+      );
     }
 
     // Transición de estado
@@ -198,6 +213,15 @@ export class ReportsService {
       const text = this.formatWeeklyReport(user, curMetrics, prevMetrics.completionRate, streak, current.label);
       await this.telegramSender.sendText(chatId, text, { parse_mode: 'Markdown' });
     }
+    if (this.emailService.isConfigured() && this.emailService.isRealEmail(user.email)) {
+      const { subject, html, text } = buildPeriodReportEmail(
+        user.displayName, 'WEEKLY', current.label,
+        curMetrics.planned, curMetrics.done, curMetrics.completionRate, streak,
+      );
+      await this.emailService.sendHtml(user.email, subject, html, text).catch(err =>
+        this.logger.error(`Error enviando reporte semanal por email para ${userId}`, err),
+      );
+    }
     this.logger.log(`Reporte semanal enviado para ${userId} (${current.label})`);
   }
 
@@ -229,6 +253,15 @@ export class ReportsService {
     if (chatId) {
       const text = this.formatMonthlyReport(user, metrics, adherenceRate, bestStreak, period.label);
       await this.telegramSender.sendText(chatId, text, { parse_mode: 'Markdown' });
+    }
+    if (this.emailService.isConfigured() && this.emailService.isRealEmail(user.email)) {
+      const { subject, html, text } = buildPeriodReportEmail(
+        user.displayName, 'MONTHLY', period.label,
+        metrics.planned, metrics.done, metrics.completionRate, bestStreak,
+      );
+      await this.emailService.sendHtml(user.email, subject, html, text).catch(err =>
+        this.logger.error(`Error enviando reporte mensual por email para ${userId}`, err),
+      );
     }
     this.logger.log(`Reporte mensual enviado para ${userId} (${period.label})`);
   }

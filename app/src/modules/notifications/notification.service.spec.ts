@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../database/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { TelegramSenderService } from '../proactivity/telegram-sender.service';
+import { QueueService } from '../proactivity/queue.service';
 import { EmailService } from './email.service';
 import { NotificationService, SendNotificationInput } from './notification.service';
 
@@ -16,8 +17,9 @@ const mockTelegram = {
   sendText:  jest.fn(),
 };
 
-const mockEmail  = { send: jest.fn() };
+const mockEmail  = { send: jest.fn(), sendHtml: jest.fn(), isConfigured: jest.fn(() => false), isRealEmail: jest.fn(() => false) };
 const mockRedis  = { incr: jest.fn(), expire: jest.fn() };
+const mockQueueService = { escalation: { add: jest.fn() } };
 
 describe('NotificationService', () => {
   let service: NotificationService;
@@ -31,6 +33,7 @@ describe('NotificationService', () => {
         { provide: PrismaService,          useValue: mockPrisma },
         { provide: TelegramSenderService,  useValue: mockTelegram },
         { provide: EmailService,           useValue: mockEmail },
+        { provide: QueueService,           useValue: mockQueueService },
         { provide: REDIS_CLIENT,           useValue: mockRedis },
       ],
     }).compile();
@@ -120,28 +123,45 @@ describe('NotificationService', () => {
       expect(mockEmail.send).not.toHaveBeenCalled();
     });
 
-    it('usa email como fallback si no hay canal Telegram', async () => {
+    it('usa email (HTML) como fallback si no hay canal Telegram', async () => {
       mockTelegram.getChatId.mockResolvedValue(null);
+      mockEmail.isRealEmail.mockReturnValue(true);
       mockPrisma.user.findUnique.mockResolvedValue({ email: 'user@example.com' });
-      mockEmail.send.mockResolvedValue(undefined);
+      mockEmail.sendHtml.mockResolvedValue(undefined);
 
       await service.send(baseInput);
 
       expect(mockTelegram.sendText).not.toHaveBeenCalled();
-      expect(mockEmail.send).toHaveBeenCalledWith(
+      expect(mockEmail.sendHtml).toHaveBeenCalledWith(
         'user@example.com',
-        baseInput.title,
-        baseInput.body,
+        expect.stringContaining(baseInput.title),
+        expect.any(String),
+        expect.stringContaining(baseInput.title),
       );
     });
 
     it('omite email si el usuario tiene email sintético @appp.local', async () => {
       mockTelegram.getChatId.mockResolvedValue(null);
+      mockEmail.isRealEmail.mockReturnValue(false);
       mockPrisma.user.findUnique.mockResolvedValue({ email: 'telegram_123@appp.local' });
 
       await service.send(baseInput);
 
-      expect(mockEmail.send).not.toHaveBeenCalled();
+      expect(mockEmail.sendHtml).not.toHaveBeenCalled();
+    });
+
+    it('programa escalación cuando requiresAck=true y Telegram disponible', async () => {
+      mockTelegram.getChatId.mockResolvedValue(55555);
+      mockTelegram.sendText.mockResolvedValue(undefined);
+      mockQueueService.escalation.add.mockResolvedValue(undefined);
+
+      await service.send({ ...baseInput, requiresAck: true });
+
+      expect(mockQueueService.escalation.add).toHaveBeenCalledWith(
+        'escalation',
+        expect.objectContaining({ notificationId: 'new-3', userId: 'user-1' }),
+        expect.objectContaining({ delay: expect.any(Number) }),
+      );
     });
   });
 

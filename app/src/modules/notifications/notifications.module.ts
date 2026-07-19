@@ -4,22 +4,25 @@ import { EmailService } from './email.service';
 import { NotificationService } from './notification.service';
 import { ReminderProcessor } from './reminder.processor';
 import { ReminderSchedulerService } from './reminder-scheduler.service';
+import { EscalationProcessor } from './escalation.processor';
 
 @Module({
   imports: [
-    ProactivityModule, // QueueService (cola reminders) + TelegramSenderService
+    ProactivityModule, // QueueService (colas reminders + escalation) + TelegramSenderService
   ],
   providers: [
     EmailService,
     NotificationService,
     ReminderSchedulerService,
     ReminderProcessor,
+    EscalationProcessor,
   ],
   exports: [
     EmailService,
     NotificationService,
     ReminderSchedulerService,
     ReminderProcessor,
+    EscalationProcessor,
   ],
 })
 export class NotificationsModule {}

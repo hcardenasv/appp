@@ -20,6 +20,7 @@ export class QueueService implements OnModuleDestroy {
   readonly reminders:       Queue;
   readonly dailyReport:     Queue;
   readonly periodReport:    Queue;
+  readonly escalation:      Queue;
 
   constructor(config: ConfigService) {
     const conn = { connection: bullmqConn(config.get<string>('REDIS_URL', 'redis://localhost:6379')) };
@@ -29,6 +30,7 @@ export class QueueService implements OnModuleDestroy {
     this.reminders      = new Queue(QUEUES.REMINDERS,       conn);
     this.dailyReport    = new Queue(QUEUES.DAILY_REPORT,    conn);
     this.periodReport   = new Queue(QUEUES.PERIOD_REPORT,   conn);
+    this.escalation     = new Queue(QUEUES.ESCALATION,      conn);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -39,6 +41,7 @@ export class QueueService implements OnModuleDestroy {
       this.reminders.close(),
       this.dailyReport.close(),
       this.periodReport.close(),
+      this.escalation.close(),
     ]);
   }
 }

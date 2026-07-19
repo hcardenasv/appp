@@ -3,6 +3,7 @@ import { ReportsService, DailyMetrics } from './reports.service';
 import { PrismaService } from '../../database/prisma.service';
 import { TelegramSenderService } from '../proactivity/telegram-sender.service';
 import { EngagementService } from '../proactivity/engagement.service';
+import { EmailService } from '../notifications/email.service';
 
 const mockPrisma = () => ({
   user: { findUnique: jest.fn() },
@@ -18,6 +19,12 @@ const mockTelegramSender = {
 
 const mockEngagementService = {
   transitionState: jest.fn(),
+};
+
+const mockEmailService = {
+  isConfigured: jest.fn(() => false),
+  isRealEmail:  jest.fn(() => false),
+  sendHtml:     jest.fn(),
 };
 
 const makeUser = (overrides = {}) => ({
@@ -45,6 +52,7 @@ describe('ReportsService', () => {
         { provide: PrismaService,        useValue: prisma },
         { provide: TelegramSenderService, useValue: mockTelegramSender },
         { provide: EngagementService,    useValue: mockEngagementService },
+        { provide: EmailService,         useValue: mockEmailService },
       ],
     }).compile();
 

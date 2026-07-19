@@ -57,4 +57,8 @@ export class UsersService {
 
     return { user, isNew: true };
   }
+
+  async updateEmail(userId: string, email: string): Promise<User> {
+    return this.prisma.user.update({ where: { userId }, data: { email } });
+  }
 }

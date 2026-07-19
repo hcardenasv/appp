@@ -4,10 +4,11 @@ import { ConversationModule } from '../conversation/conversation.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { ProactivityModule } from '../proactivity/proactivity.module';
 import { ReportsModule } from '../reports/reports.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { BotService } from './bot.service';
 
 @Module({
-  imports: [UsersModule, ConversationModule, TasksModule, ProactivityModule, ReportsModule],
+  imports: [UsersModule, ConversationModule, TasksModule, ProactivityModule, ReportsModule, NotificationsModule],
   providers: [BotService],
   exports: [BotService],
 })

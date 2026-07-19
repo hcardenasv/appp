@@ -3,8 +3,11 @@ import type IORedis from 'ioredis';
 import { PrismaService } from '../../database/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { TelegramSenderService } from '../proactivity/telegram-sender.service';
+import { QueueService } from '../proactivity/queue.service';
+import { JOB_NAMES } from '../proactivity/proactivity.constants';
 import { EmailService } from './email.service';
-import { MAX_NOTIFICATIONS_PER_HOUR } from './notifications.constants';
+import { buildReminderEmail } from './email-templates';
+import { MAX_NOTIFICATIONS_PER_HOUR, ESCALATION_DELAY_MS } from './notifications.constants';
 
 export interface SendNotificationInput {
   userId:      string;
@@ -21,9 +24,10 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(
-    private readonly prisma:    PrismaService,
-    private readonly telegram:  TelegramSenderService,
-    private readonly email:     EmailService,
+    private readonly prisma:        PrismaService,
+    private readonly telegram:      TelegramSenderService,
+    private readonly email:         EmailService,
+    private readonly queueService:  QueueService,
     @Inject(REDIS_CLIENT) private readonly redis: IORedis,
   ) {}
 
@@ -54,10 +58,21 @@ export class NotificationService {
     const chatId = await this.telegram.getChatId(this.prisma, userId);
     if (chatId !== null) {
       await this.deliverViaTelegram(notification.notificationId, chatId, title, body);
+      // 5. Si requiresAck, programar escalación por email a los 30 min
+      if (requiresAck) {
+        await this.scheduleEscalation(notification.notificationId, userId, title, body);
+      }
     } else {
       // Fallback a email si no hay canal Telegram configurado
       await this.deliverViaEmail(notification.notificationId, userId, title, body);
     }
+  }
+
+  async markAcked(userId: string): Promise<void> {
+    await this.prisma.notification.updateMany({
+      where: { userId, requiresAck: true, ackedAt: null },
+      data:  { ackedAt: new Date() },
+    });
   }
 
   // ─── Canales ───────────────────────────────────────────────────────────────
@@ -94,14 +109,15 @@ export class NotificationService {
     body:           string,
   ): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { userId } });
-    if (!user?.email || user.email.endsWith('@appp.local')) return;
+    if (!user || !this.email.isRealEmail(user.email)) return;
 
     const delivery = await this.prisma.notificationDelivery.create({
       data: { notificationId, channelType: 'EMAIL', status: 'QUEUED' },
     });
 
     try {
-      await this.email.send(user.email, title, body);
+      const { subject, html, text } = buildReminderEmail(title, body);
+      await this.email.sendHtml(user.email, subject, html, text);
       await this.prisma.notificationDelivery.update({
         where: { deliveryId: delivery.deliveryId },
         data:  { status: 'SENT', sentAt: new Date(), statusAt: new Date() },
@@ -112,6 +128,19 @@ export class NotificationService {
         data:  { status: 'FAILED', statusAt: new Date(), providerRef: String(err) },
       });
     }
+  }
+
+  private async scheduleEscalation(
+    notificationId: string,
+    userId: string,
+    title: string,
+    body: string,
+  ): Promise<void> {
+    await this.queueService.escalation.add(
+      JOB_NAMES.ESCALATION,
+      { notificationId, userId, title, body },
+      { delay: ESCALATION_DELAY_MS, jobId: `escalation:${notificationId}`, removeOnComplete: true, removeOnFail: 3 },
+    );
   }
 
   // ─── Rate limit ────────────────────────────────────────────────────────────

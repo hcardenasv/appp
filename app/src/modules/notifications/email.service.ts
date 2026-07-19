@@ -25,14 +25,26 @@ export class EmailService {
     });
   }
 
+  isConfigured(): boolean {
+    return this.enabled;
+  }
+
+  isRealEmail(email: string): boolean {
+    return !!email && !email.endsWith('@appp.local');
+  }
+
   async send(to: string, subject: string, body: string): Promise<void> {
+    await this.sendHtml(to, subject, undefined, body);
+  }
+
+  async sendHtml(to: string, subject: string, html: string | undefined, text: string): Promise<void> {
     if (!this.enabled) {
       this.logger.warn(`Email deshabilitado (SMTP_HOST no configurado) — se omite: ${subject}`);
       return;
     }
 
     try {
-      await this.transporter.sendMail({ from: this.from, to, subject, text: body });
+      await this.transporter.sendMail({ from: this.from, to, subject, html, text });
       this.logger.log(`Email enviado a ${to}: ${subject}`);
     } catch (err) {
       this.logger.error(`Error enviando email a ${to}`, err);

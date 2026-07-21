@@ -8,6 +8,7 @@ import { JOB_NAMES } from '../proactivity/proactivity.constants';
 import { EmailService } from './email.service';
 import { buildReminderEmail } from './email-templates';
 import { MAX_NOTIFICATIONS_PER_HOUR, ESCALATION_DELAY_MS } from './notifications.constants';
+import { WebPushService } from '../pwa/web-push.service';
 
 export interface SendNotificationInput {
   userId:      string;
@@ -28,6 +29,7 @@ export class NotificationService {
     private readonly telegram:      TelegramSenderService,
     private readonly email:         EmailService,
     private readonly queueService:  QueueService,
+    private readonly webPush:       WebPushService,
     @Inject(REDIS_CLIENT) private readonly redis: IORedis,
   ) {}
 
@@ -66,6 +68,9 @@ export class NotificationService {
       // Fallback a email si no hay canal Telegram configurado
       await this.deliverViaEmail(notification.notificationId, userId, title, body);
     }
+
+    // 6. Web Push: canal paralelo a Telegram (popup de escritorio)
+    await this.deliverViaWebPush(notification.notificationId, userId, title, body);
   }
 
   async markAcked(userId: string): Promise<void> {
@@ -118,6 +123,32 @@ export class NotificationService {
     try {
       const { subject, html, text } = buildReminderEmail(title, body);
       await this.email.sendHtml(user.email, subject, html, text);
+      await this.prisma.notificationDelivery.update({
+        where: { deliveryId: delivery.deliveryId },
+        data:  { status: 'SENT', sentAt: new Date(), statusAt: new Date() },
+      });
+    } catch (err) {
+      await this.prisma.notificationDelivery.update({
+        where: { deliveryId: delivery.deliveryId },
+        data:  { status: 'FAILED', statusAt: new Date(), providerRef: String(err) },
+      });
+    }
+  }
+
+  private async deliverViaWebPush(
+    notificationId: string,
+    userId:         string,
+    title:          string,
+    body:           string,
+  ): Promise<void> {
+    if (!this.webPush.isConfigured()) return;
+
+    const delivery = await this.prisma.notificationDelivery.create({
+      data: { notificationId, channelType: 'WEB_PUSH', status: 'QUEUED' },
+    });
+
+    try {
+      await this.webPush.sendToUser(userId, { title, body, url: '/' });
       await this.prisma.notificationDelivery.update({
         where: { deliveryId: delivery.deliveryId },
         data:  { status: 'SENT', sentAt: new Date(), statusAt: new Date() },

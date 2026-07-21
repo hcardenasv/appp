@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APPP — Asistente Personal de Productividad</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f0f1a;
+      --surface: #1a1a2e;
+      --border:  #2d2d4e;
+      --accent:  #4f46e5;
+      --accent2: #7c3aed;
+      --text:    #e2e8f0;
+      --muted:   #94a3b8;
+      --success: #10b981;
+      --error:   #ef4444;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.5rem;
+      padding: 2.5rem 2rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0,0,0,.5);
+    }
+
+    .logo { font-size: 3.5rem; margin-bottom: 0.75rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .tagline { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+
+    .status-box {
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-height: 3rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .status-box.ok     { color: var(--success); border-color: var(--success); }
+    .status-box.error  { color: var(--error);   border-color: var(--error);   }
+    .status-box.info   { color: var(--accent);  border-color: var(--accent);  }
+
+    button {
+      width: 100%;
+      padding: 0.875rem 1.5rem;
+      border: none;
+      border-radius: 0.75rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+    }
+    button:hover  { opacity: .9; }
+    button:active { transform: scale(.98); }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+
+    .note {
+      margin-top: 1.25rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .note a { color: var(--accent); text-decoration: none; }
+    .note a:hover { text-decoration: underline; }
+
+    .footer {
+      margin-top: 3rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🎯</div>
+    <h1>APPP</h1>
+    <p class="tagline">Asistente Personal de Productividad</p>
+
+    <div class="status-box" id="status">Verificando compatibilidad...</div>
+
+    <button id="btn" disabled>Activar notificaciones</button>
+
+    <p class="note" id="note">
+      Al activar, recibirás alertas de tus tareas y check-ins directamente en este navegador,
+      incluso con la ventana cerrada.
+    </p>
+  </div>
+
+  <p class="footer">APPP &mdash; sistema proactivo self-hosted</p>
+
+  <script>
+    const params  = new URLSearchParams(location.search);
+    const TOKEN   = params.get('token');
+    const STATUS  = document.getElementById('status');
+    const BTN     = document.getElementById('btn');
+    const NOTE    = document.getElementById('note');
+
+    function setStatus(msg, type = '') {
+      STATUS.textContent = msg;
+      STATUS.className = 'status-box' + (type ? ' ' + type : '');
+    }
+
+    async function init() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        setStatus('❌ Tu navegador no soporta notificaciones push. Usa Chrome o Edge.', 'error');
+        return;
+      }
+      if (!TOKEN) {
+        setStatus('⚠️ Enlace sin token. Envía /pwa al bot de Telegram para obtener un enlace válido.', 'error');
+        NOTE.innerHTML = 'Escribe <strong>/pwa</strong> en el bot de Telegram y abre el enlace que te envíe.';
+        return;
+      }
+
+      // Fetch VAPID public key
+      let vapidKey;
+      try {
+        const res = await fetch('/pwa/vapid-key');
+        const json = await res.json();
+        vapidKey = json.publicKey;
+      } catch (_) {
+        setStatus('❌ No se pudo conectar con el servidor.', 'error');
+        return;
+      }
+
+      if (!vapidKey) {
+        setStatus('⚠️ El servidor no tiene Web Push configurado (VAPID_PUBLIC_KEY no definido).', 'error');
+        return;
+      }
+
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        setStatus('✅ Notificaciones ya activadas en este dispositivo.', 'ok');
+        BTN.textContent = 'Reactivar suscripción';
+        BTN.disabled = false;
+      } else {
+        setStatus('Listo para activar notificaciones push.', 'info');
+        BTN.disabled = false;
+      }
+
+      BTN.addEventListener('click', () => subscribe(reg, vapidKey));
+    }
+
+    async function subscribe(reg, vapidKey) {
+      BTN.disabled = true;
+      setStatus('Solicitando permiso...', 'info');
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setStatus('❌ Permiso denegado. Habilita las notificaciones en la configuración del navegador.', 'error');
+        BTN.disabled = false;
+        return;
+      }
+
+      setStatus('Suscribiendo...', 'info');
+      let sub;
+      try {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly:      true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+      } catch (err) {
+        setStatus('❌ Error al suscribir: ' + err.message, 'error');
+        BTN.disabled = false;
+        return;
+      }
+
+      const subJson = sub.toJSON();
+      try {
+        const res = await fetch('/pwa/subscribe', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            token:    TOKEN,
+            endpoint: subJson.endpoint,
+            keys:     { auth: subJson.keys.auth, p256dh: subJson.keys.p256dh },
+          }),
+        });
+
+        if (res.status === 204) {
+          setStatus('✅ ¡Notificaciones activadas! Puedes instalar la app desde el menú del navegador.', 'ok');
+          BTN.textContent = 'Activadas ✓';
+          NOTE.innerHTML = 'Recibirás alertas de tareas y check-ins aquí. ' +
+            'Para instalar como app de escritorio, busca el ícono <strong>Instalar</strong> en la barra del navegador.';
+          // Clean token from URL without reload
+          history.replaceState({}, '', '/');
+        } else if (res.status === 401) {
+          setStatus('❌ Token expirado. Usa /pwa en Telegram para obtener un nuevo enlace.', 'error');
+        } else {
+          setStatus('❌ Error del servidor (' + res.status + '). Intenta de nuevo.', 'error');
+          BTN.disabled = false;
+        }
+      } catch (err) {
+        setStatus('❌ Error de red: ' + err.message, 'error');
+        BTN.disabled = false;
+      }
+    }
+
+    // Converts a base64url string to Uint8Array (required for applicationServerKey)
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const raw     = atob(base64);
+      return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    }
+
+    init().catch((err) => setStatus('❌ Error inesperado: ' + err.message, 'error'));
+  </script>
+</body>
+</html>

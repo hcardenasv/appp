@@ -34,15 +34,16 @@ model User {
   voiceEnabled Boolean  @default(true) @map("voice_enabled")
   createdAt    DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
 
-  channels        Channel[]
-  projects        Project[]
-  tasks           Task[]
-  events          Event[]
-  dailySessions   DailySession[]
-  notifications   Notification[]
-  interactionLogs InteractionLog[]
-  reports         Report[]
-  engagementState EngagementState?
+  channels          Channel[]
+  projects          Project[]
+  tasks             Task[]
+  events            Event[]
+  dailySessions     DailySession[]
+  notifications     Notification[]
+  interactionLogs   InteractionLog[]
+  reports           Report[]
+  engagementState   EngagementState?
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -276,6 +277,26 @@ model Report {
 
   @@unique([userId, periodType, periodStart])
   @@map("reports")
+}
+
+// ============================================================
+// WEB PUSH SUBSCRIPTIONS (Hito 11)
+// ============================================================
+
+model PushSubscription {
+  subId      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("sub_id")
+  userId     String    @db.Uuid @map("user_id")
+  endpoint   String
+  auth       String
+  p256dh     String
+  userAgent  String?   @db.VarChar(512) @map("user_agent")
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  lastUsedAt DateTime? @db.Timestamptz(6) @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@map("push_subscriptions")
 }
 
 // ============================================================

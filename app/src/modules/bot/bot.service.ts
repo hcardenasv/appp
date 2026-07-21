@@ -7,6 +7,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { EngagementService } from '../proactivity/engagement.service';
 import { ReportsService } from '../reports/reports.service';
 import { NotificationService } from '../notifications/notification.service';
+import { PwaService } from '../pwa/pwa.service';
 import type { AppContext } from './bot.context';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,6 +25,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly engagementService: EngagementService,
     private readonly reportsService: ReportsService,
     private readonly notificationService: NotificationService,
+    private readonly pwaService: PwaService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -88,11 +90,29 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           `Comandos disponibles:\n` +
           `• /start — Registrarse o dar la bienvenida de vuelta\n` +
           `• /email \`tu@correo.com\` — Configurar email para notificaciones\n` +
+          `• /pwa — Instalar la app web y activar notificaciones push\n` +
           `• /ayuda — Mostrar este mensaje\n\n` +
           `El sistema te contactará proactivamente para el check-in matutino ` +
           `y el check-out vespertino. También recibirás recordatorios de tus tareas.\n\n` +
           `Puedes escribirme en lenguaje natural: "tengo reunión con el cliente ` +
           `el viernes a las 10", "ya terminé el informe", "¿qué tengo pendiente?"`,
+        { parse_mode: 'Markdown' },
+      );
+    });
+
+    bot.command('pwa', async (ctx) => {
+      if (!ctx.appUser) {
+        await ctx.reply('No estás registrado. Usa /start primero.');
+        return;
+      }
+      const appUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
+      const token  = await this.pwaService.generateToken(ctx.appUser.userId);
+      const url    = `${appUrl}/?token=${token}`;
+      await ctx.reply(
+        `📲 *Instala APPP como app de escritorio*\n\n` +
+          `Abre este enlace en Chrome o Edge para instalar APPP y activar notificaciones push:\n\n` +
+          `${url}\n\n` +
+          `⏱ El enlace expira en *5 minutos*. Si caduca, usa /pwa de nuevo.`,
         { parse_mode: 'Markdown' },
       );
     });

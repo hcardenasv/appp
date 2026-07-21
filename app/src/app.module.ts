@@ -10,6 +10,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ProactivityModule } from './modules/proactivity/proactivity.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BotModule } from './modules/bot/bot.module';
+import { PwaModule } from './modules/pwa/pwa.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { BotModule } from './modules/bot/bot.module';
     NotificationsModule,
     ReportsModule,
     BotModule,
+    PwaModule,
   ],
   controllers: [HealthController],
 })

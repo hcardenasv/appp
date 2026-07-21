@@ -4,6 +4,7 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { TelegramSenderService } from '../proactivity/telegram-sender.service';
 import { QueueService } from '../proactivity/queue.service';
 import { EmailService } from './email.service';
+import { WebPushService } from '../pwa/web-push.service';
 import { NotificationService, SendNotificationInput } from './notification.service';
 
 const mockPrisma = {
@@ -17,8 +18,9 @@ const mockTelegram = {
   sendText:  jest.fn(),
 };
 
-const mockEmail  = { send: jest.fn(), sendHtml: jest.fn(), isConfigured: jest.fn(() => false), isRealEmail: jest.fn(() => false) };
-const mockRedis  = { incr: jest.fn(), expire: jest.fn() };
+const mockEmail    = { send: jest.fn(), sendHtml: jest.fn(), isConfigured: jest.fn(() => false), isRealEmail: jest.fn(() => false) };
+const mockWebPush  = { isConfigured: jest.fn(() => false), sendToUser: jest.fn() };
+const mockRedis    = { incr: jest.fn(), expire: jest.fn() };
 const mockQueueService = { escalation: { add: jest.fn() } };
 
 describe('NotificationService', () => {
@@ -33,6 +35,7 @@ describe('NotificationService', () => {
         { provide: PrismaService,          useValue: mockPrisma },
         { provide: TelegramSenderService,  useValue: mockTelegram },
         { provide: EmailService,           useValue: mockEmail },
+        { provide: WebPushService,         useValue: mockWebPush },
         { provide: QueueService,           useValue: mockQueueService },
         { provide: REDIS_CLIENT,           useValue: mockRedis },
       ],

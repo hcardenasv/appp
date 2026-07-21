@@ -1,0 +1,12 @@
+{
+  "name": "APPP — Asistente Personal de Productividad",
+  "short_name": "APPP",
+  "description": "Tu asistente proactivo de tareas y productividad.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

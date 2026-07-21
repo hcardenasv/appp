@@ -36,6 +36,7 @@
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",
     "@types/uuid": "^10.0.0",
+    "@types/web-push": "^3.6.4",
     "bullmq": "^5.80.2",
     "grammy": "^1.44.0",
     "ioredis": "^5.11.1",
@@ -44,7 +45,8 @@
     "prisma": "^7.8.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

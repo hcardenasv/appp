@@ -6,6 +6,8 @@ const BASE_STYLE = `
   .body{padding:28px;color:#222222;line-height:1.65;font-size:15px}
   .title{font-size:20px;font-weight:700;color:#1a1a2e;margin-bottom:12px}
   .section{margin-top:20px;padding-top:16px;border-top:1px solid #eeeeee}
+  .narrative{margin-top:20px;padding:16px 18px;background:#f0f0ff;border-left:4px solid #4f46e5;border-radius:0 6px 6px 0;font-style:italic;color:#333366;line-height:1.7}
+  .narrative-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6c63ff;margin-bottom:6px;font-style:normal}
   .ftr{background:#f4f4f5;padding:14px 28px;text-align:center;font-size:12px;color:#888888}
   pre{background:#f8f8f8;padding:12px;border-radius:4px;font-size:13px;white-space:pre-wrap;word-break:break-word}
   table{width:100%;border-collapse:collapse}
@@ -109,6 +111,7 @@ export function buildPeriodReportEmail(
   done: number,
   completionRate: number,
   streak: number,
+  narrative?: string,
 ): { subject: string; html: string; text: string } {
   const name     = displayName.split(' ')[0];
   const typeName = periodType === 'WEEKLY' ? 'semanal' : 'mensual';
@@ -122,16 +125,22 @@ export function buildPeriodReportEmail(
 
   const tableHtml = `<table>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>`;
 
+  const narrativeHtml = narrative
+    ? `<div class="narrative"><div class="narrative-lbl">🧠 Análisis</div>${escapeHtml(narrative)}</div>`
+    : '';
+
   const html = htmlShell(`
     ${HDR}
     <div class="body">
       <div class="title">Resumen ${typeName} — ${escapeHtml(label)}</div>
       <p>Hola ${escapeHtml(name)}, aquí está tu resumen ${typeName}.</p>
       <div class="section">${tableHtml}</div>
+      ${narrativeHtml}
     </div>
   `);
 
-  const text = `Resumen ${typeName} APPP — ${label}\n\nHola ${name}!\nCompletadas: ${done} de ${planned} (${completionRate}%)${streak > 0 ? `\nRacha: ${streak} días 🔥` : ''}`;
+  const narrativeText = narrative ? `\n\n🧠 Análisis:\n${narrative}` : '';
+  const text = `Resumen ${typeName} APPP — ${label}\n\nHola ${name}!\nCompletadas: ${done} de ${planned} (${completionRate}%)${streak > 0 ? `\nRacha: ${streak} días 🔥` : ''}${narrativeText}`;
 
   return { subject, html, text };
 }

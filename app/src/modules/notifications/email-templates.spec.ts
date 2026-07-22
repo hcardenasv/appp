@@ -82,4 +82,18 @@ describe('buildPeriodReportEmail', () => {
     expect(html).toContain('80%');
     expect(html).toContain('5 días');
   });
+
+  it('incluye narrativa en html y text cuando se provee', () => {
+    const narrativa = 'Excelente semana con progreso consistente.';
+    const { html, text } = buildPeriodReportEmail('Ana', 'WEEKLY', '14–20 jul', 10, 8, 80, 5, narrativa);
+    expect(html).toContain('Análisis');
+    expect(html).toContain('Excelente semana con progreso consistente.');
+    expect(text).toContain('Análisis');
+    expect(text).toContain('Excelente semana con progreso consistente.');
+  });
+
+  it('no incluye sección narrativa cuando no se provee', () => {
+    const { html } = buildPeriodReportEmail('Ana', 'WEEKLY', '14–20 jul', 10, 8, 80, 5);
+    expect(html).not.toContain('Análisis');
+  });
 });

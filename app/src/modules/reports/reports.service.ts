@@ -8,6 +8,7 @@ import { EmailService } from '../notifications/email.service';
 import { buildDailyReportEmail, buildPeriodReportEmail } from '../notifications/email-templates';
 import { localDayRange, localDateAsUtcMidnight, localWeekBounds, localMonthBounds } from '../../utils/timezone';
 import { ENGAGEMENT_STATES } from '../proactivity/proactivity.constants';
+import { NarrativeService } from './narrative.service';
 
 export interface DailyMetrics {
   planned:          number;
@@ -28,6 +29,7 @@ export class ReportsService {
     private readonly telegramSender:     TelegramSenderService,
     private readonly engagementService:  EngagementService,
     private readonly emailService:       EmailService,
+    private readonly narrativeService:   NarrativeService,
   ) {}
 
   /**
@@ -200,23 +202,37 @@ export class ReportsService {
     const prevMetrics = await this.calcPeriodMetrics(userId, previous);
     const streak      = await this.calculateStreak(userId, user.timezone);
 
+    // Narrativa ejecutiva generada por Claude (falla silenciosamente)
+    const narrative = await this.narrativeService.weeklyNarrative({
+      label: current.label,
+      planned:       curMetrics.planned,
+      done:          curMetrics.done,
+      completionRate: curMetrics.completionRate,
+      deferred:      curMetrics.deferred,
+      cancelled:     curMetrics.cancelled,
+      bestDay:       curMetrics.bestDay,
+      prevWeekRate:  prevMetrics.completionRate,
+      streak,
+    });
+
     await this.prisma.report.create({
       data: {
         userId, periodType: 'WEEKLY',
         periodStart, periodEnd: new Date(current.dateLt.getTime() - 86_400_000),
-        metrics: { ...curMetrics, prevWeekRate: prevMetrics.completionRate, streak } as Prisma.InputJsonValue,
+        metrics: { ...curMetrics, prevWeekRate: prevMetrics.completionRate, streak, narrative } as Prisma.InputJsonValue,
       },
     });
 
     const chatId = await this.telegramSender.getChatId(this.prisma, userId);
     if (chatId) {
-      const text = this.formatWeeklyReport(user, curMetrics, prevMetrics.completionRate, streak, current.label);
+      let text = this.formatWeeklyReport(user, curMetrics, prevMetrics.completionRate, streak, current.label);
+      if (narrative) text += `\n\n_🧠 Análisis:_\n${narrative}`;
       await this.telegramSender.sendText(chatId, text, { parse_mode: 'Markdown' });
     }
     if (this.emailService.isConfigured() && this.emailService.isRealEmail(user.email)) {
       const { subject, html, text } = buildPeriodReportEmail(
         user.displayName, 'WEEKLY', current.label,
-        curMetrics.planned, curMetrics.done, curMetrics.completionRate, streak,
+        curMetrics.planned, curMetrics.done, curMetrics.completionRate, streak, narrative ?? undefined,
       );
       await this.emailService.sendHtml(user.email, subject, html, text).catch(err =>
         this.logger.error(`Error enviando reporte semanal por email para ${userId}`, err),
@@ -241,23 +257,36 @@ export class ReportsService {
     const adherenceRate = await this.calcAdherenceRate(userId, period.dateGte, period.dateLt);
     const bestStreak    = await this.calcBestStreak(userId, period.dateGte, period.dateLt);
 
+    // Narrativa ejecutiva generada por Claude (falla silenciosamente)
+    const narrative = await this.narrativeService.monthlyNarrative({
+      label: period.label,
+      planned:        metrics.planned,
+      done:           metrics.done,
+      completionRate: metrics.completionRate,
+      deferred:       metrics.deferred,
+      cancelled:      metrics.cancelled,
+      adherenceRate,
+      bestStreak,
+    });
+
     await this.prisma.report.create({
       data: {
         userId, periodType: 'MONTHLY',
         periodStart, periodEnd: new Date(period.dateLt.getTime() - 86_400_000),
-        metrics: { ...metrics, adherenceRate, bestStreak } as Prisma.InputJsonValue,
+        metrics: { ...metrics, adherenceRate, bestStreak, narrative } as Prisma.InputJsonValue,
       },
     });
 
     const chatId = await this.telegramSender.getChatId(this.prisma, userId);
     if (chatId) {
-      const text = this.formatMonthlyReport(user, metrics, adherenceRate, bestStreak, period.label);
+      let text = this.formatMonthlyReport(user, metrics, adherenceRate, bestStreak, period.label);
+      if (narrative) text += `\n\n_🧠 Análisis:_\n${narrative}`;
       await this.telegramSender.sendText(chatId, text, { parse_mode: 'Markdown' });
     }
     if (this.emailService.isConfigured() && this.emailService.isRealEmail(user.email)) {
       const { subject, html, text } = buildPeriodReportEmail(
         user.displayName, 'MONTHLY', period.label,
-        metrics.planned, metrics.done, metrics.completionRate, bestStreak,
+        metrics.planned, metrics.done, metrics.completionRate, bestStreak, narrative ?? undefined,
       );
       await this.emailService.sendHtml(user.email, subject, html, text).catch(err =>
         this.logger.error(`Error enviando reporte mensual por email para ${userId}`, err),

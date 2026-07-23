@@ -38,6 +38,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.bot = new Bot<AppContext>(token);
     this.registerHandlers(this.bot);
     void this.bot.start().catch((err) => this.logger.error('Bot polling error', err));
+
+    // Registrar comandos visibles en el menú "/" de Telegram
+    await this.bot.api.setMyCommands([
+      { command: 'start',  description: 'Registrarse o dar la bienvenida de vuelta' },
+      { command: 'ayuda',  description: 'Ver todos los comandos disponibles' },
+      { command: 'email',  description: 'Configurar email: /email tu@correo.com' },
+      { command: 'pwa',    description: 'Instalar la app web y activar notificaciones push' },
+    ]).catch(err => this.logger.warn('No se pudo registrar comandos en Telegram', err));
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -87,16 +95,18 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     bot.command('ayuda', async (ctx) => {
       await ctx.reply(
         `*APPP — Asistente Personal de Productividad*\n\n` +
-          `Comandos disponibles:\n` +
-          `• /start — Registrarse o dar la bienvenida de vuelta\n` +
-          `• /email \`tu@correo.com\` — Configurar email para notificaciones\n` +
-          `• /pwa — Instalar la app web y activar notificaciones push\n` +
-          `• /ayuda — Mostrar este mensaje\n\n` +
-          `El sistema te contactará proactivamente para el check-in matutino ` +
-          `y el check-out vespertino. También recibirás recordatorios de tus tareas.\n\n` +
-          `Puedes escribirme en lenguaje natural: "tengo reunión con el cliente ` +
-          `el viernes a las 10", "ya terminé el informe", "¿qué tengo pendiente?"`,
-        { parse_mode: 'Markdown' },
+          `*Comandos:*\n` +
+          `/start — Registrarse o dar la bienvenida\n` +
+          `/email — Configurar email \\(ej: /email nombre@dominio\\.com\\)\n` +
+          `/pwa — Instalar app web y activar notificaciones push\n` +
+          `/ayuda — Mostrar este mensaje\n\n` +
+          `*Lenguaje natural* — escríbeme directamente:\n` +
+          `"tengo reunión con el cliente el viernes a las 10"\n` +
+          `"ya terminé el informe"\n` +
+          `"¿qué tengo pendiente?"\n` +
+          `"marca la tarea X como hecha"\n\n` +
+          `El sistema te enviará el check\\-in matutino y el check\\-out vespertino automáticamente según tu horario laboral\\.`,
+        { parse_mode: 'MarkdownV2' },
       );
     });
 

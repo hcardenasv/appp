@@ -20,6 +20,7 @@
       --muted:   #94a3b8;
       --success: #10b981;
       --error:   #ef4444;
+      --warn:    #f59e0b;
     }
 
     body {
@@ -54,7 +55,7 @@
       border: 1px solid var(--border);
       border-radius: 0.75rem;
       padding: 1rem 1.25rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
       font-size: 0.9rem;
       color: var(--muted);
       min-height: 3rem;
@@ -62,11 +63,14 @@
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
+      line-height: 1.5;
     }
-
     .status-box.ok     { color: var(--success); border-color: var(--success); }
     .status-box.error  { color: var(--error);   border-color: var(--error);   }
     .status-box.info   { color: var(--accent);  border-color: var(--accent);  }
+    .status-box.warn   { color: var(--warn);    border-color: var(--warn);    }
+
+    .btn-row { display: flex; flex-direction: column; gap: 0.75rem; }
 
     button {
       width: 100%;
@@ -77,21 +81,37 @@
       font-weight: 600;
       cursor: pointer;
       transition: opacity .2s, transform .1s;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff;
     }
     button:hover  { opacity: .9; }
     button:active { transform: scale(.98); }
-    button:disabled { opacity: .4; cursor: not-allowed; }
+    button:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+
+    #btn-push    { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+    #btn-install { background: linear-gradient(135deg, #059669, #0d9488); display: none; }
 
     .note {
       margin-top: 1.25rem;
       font-size: 0.78rem;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.6;
+      text-align: left;
     }
-    .note a { color: var(--accent); text-decoration: none; }
-    .note a:hover { text-decoration: underline; }
+    .note strong { color: var(--text); }
+
+    .hint-box {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: rgba(79,70,229,.08);
+      border: 1px solid rgba(79,70,229,.3);
+      border-radius: 0.5rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: left;
+      line-height: 1.6;
+      display: none;
+    }
+    .hint-box.visible { display: block; }
 
     .footer {
       margin-top: 3rem;
@@ -106,12 +126,22 @@
     <h1>APPP</h1>
     <p class="tagline">Asistente Personal de Productividad</p>
 
-    <div class="status-box" id="status">Verificando compatibilidad...</div>
+    <div class="status-box" id="status">Verificando compatibilidad…</div>
 
-    <button id="btn" disabled>Activar notificaciones</button>
+    <div class="btn-row">
+      <button id="btn-push" disabled>Activar notificaciones push</button>
+      <button id="btn-install">📲 Instalar como app</button>
+    </div>
+
+    <div class="hint-box" id="hint-install">
+      <strong>¿No ves el botón de instalar?</strong><br>
+      En Chrome: busca el ícono <strong>⊕</strong> o <strong>🖥↓</strong> en la barra de direcciones (extremo derecho).<br>
+      En Edge: menú <strong>…</strong> → <em>Aplicaciones</em> → <em>Instalar este sitio como aplicación</em>.<br>
+      La app funciona aunque no la instales.
+    </div>
 
     <p class="note" id="note">
-      Al activar, recibirás alertas de tus tareas y check-ins directamente en este navegador,
+      Al activar, recibirás alertas de check-in, check-out y recordatorios directamente en este navegador,
       incluso con la ventana cerrada.
     </p>
   </div>
@@ -122,8 +152,33 @@
     const params  = new URLSearchParams(location.search);
     const TOKEN   = params.get('token');
     const STATUS  = document.getElementById('status');
-    const BTN     = document.getElementById('btn');
+    const BTN     = document.getElementById('btn-push');
+    const BTN_INS = document.getElementById('btn-install');
+    const HINT    = document.getElementById('hint-install');
     const NOTE    = document.getElementById('note');
+
+    // Capturar beforeinstallprompt lo antes posible
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      BTN_INS.style.display = 'block';
+    });
+
+    window.addEventListener('appinstalled', () => {
+      BTN_INS.style.display = 'none';
+      deferredInstallPrompt = null;
+    });
+
+    BTN_INS.addEventListener('click', async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      if (outcome === 'accepted') {
+        BTN_INS.style.display = 'none';
+        deferredInstallPrompt = null;
+      }
+    });
 
     function setStatus(msg, type = '') {
       STATUS.textContent = msg;
@@ -132,16 +187,15 @@
 
     async function init() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        setStatus('❌ Tu navegador no soporta notificaciones push. Usa Chrome o Edge.', 'error');
+        setStatus('❌ Tu navegador no soporta push. Usa Chrome o Edge.', 'error');
         return;
       }
       if (!TOKEN) {
-        setStatus('⚠️ Enlace sin token. Envía /pwa al bot de Telegram para obtener un enlace válido.', 'error');
+        setStatus('⚠️ Enlace sin token. Escribe /pwa en el bot de Telegram para obtener un enlace válido.', 'error');
         NOTE.innerHTML = 'Escribe <strong>/pwa</strong> en el bot de Telegram y abre el enlace que te envíe.';
         return;
       }
 
-      // Fetch VAPID public key
       let vapidKey;
       try {
         const res = await fetch('/pwa/vapid-key');
@@ -151,7 +205,6 @@
         setStatus('❌ No se pudo conectar con el servidor.', 'error');
         return;
       }
-
       if (!vapidKey) {
         setStatus('⚠️ El servidor no tiene Web Push configurado (VAPID_PUBLIC_KEY no definido).', 'error');
         return;
@@ -162,20 +215,26 @@
 
       const existing = await reg.pushManager.getSubscription();
       if (existing) {
-        setStatus('✅ Notificaciones ya activadas en este dispositivo.', 'ok');
+        setStatus('✅ Notificaciones ya activas en este dispositivo.', 'ok');
         BTN.textContent = 'Reactivar suscripción';
-        BTN.disabled = false;
       } else {
-        setStatus('Listo para activar notificaciones push.', 'info');
-        BTN.disabled = false;
+        setStatus('Listo. Activa las notificaciones para recibir alertas.', 'info');
       }
+      BTN.disabled = false;
+
+      // Si el navegador no disparó beforeinstallprompt, mostrar hint manual
+      setTimeout(() => {
+        if (!deferredInstallPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+          HINT.classList.add('visible');
+        }
+      }, 2000);
 
       BTN.addEventListener('click', () => subscribe(reg, vapidKey));
     }
 
     async function subscribe(reg, vapidKey) {
       BTN.disabled = true;
-      setStatus('Solicitando permiso...', 'info');
+      setStatus('Solicitando permiso…', 'info');
 
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
@@ -184,7 +243,7 @@
         return;
       }
 
-      setStatus('Suscribiendo...', 'info');
+      setStatus('Suscribiendo…', 'info');
       let sub;
       try {
         sub = await reg.pushManager.subscribe({
@@ -210,11 +269,12 @@
         });
 
         if (res.status === 204) {
-          setStatus('✅ ¡Notificaciones activadas! Puedes instalar la app desde el menú del navegador.', 'ok');
+          setStatus('✅ ¡Notificaciones activadas! Las alertas llegarán aquí aunque cierres el navegador.', 'ok');
           BTN.textContent = 'Activadas ✓';
-          NOTE.innerHTML = 'Recibirás alertas de tareas y check-ins aquí. ' +
-            'Para instalar como app de escritorio, busca el ícono <strong>Instalar</strong> en la barra del navegador.';
-          // Clean token from URL without reload
+          NOTE.innerHTML =
+            'Recibirás el <strong>check-in matutino</strong> y el <strong>check-out vespertino</strong> aquí.<br><br>' +
+            'Para instalar como app: busca <strong>⊕</strong> o <strong>🖥↓</strong> en la barra de tu navegador.';
+          HINT.classList.add('visible');
           history.replaceState({}, '', '/');
         } else if (res.status === 401) {
           setStatus('❌ Token expirado. Usa /pwa en Telegram para obtener un nuevo enlace.', 'error');
@@ -228,7 +288,6 @@
       }
     }
 
-    // Converts a base64url string to Uint8Array (required for applicationServerKey)
     function urlBase64ToUint8Array(base64String) {
       const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
       const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

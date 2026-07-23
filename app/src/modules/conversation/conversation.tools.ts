@@ -12,7 +12,9 @@ export const CONVERSATION_TOOLS: Anthropic.Messages.Tool[] = [
         taskType: {
           type: 'string',
           enum: [...TASK_TYPES],
-          description: 'Tipo de tarea según su naturaleza',
+          description:
+            'Tipo de tarea. Usa REMINDER cuando el usuario pida que se le recuerde algo a una hora específica. ' +
+            'Usa MEETING para reuniones, PHONE_CALL para llamadas, DEADLINE para fechas límite, GENERIC para todo lo demás.',
         },
         title: { type: 'string', description: 'Título conciso de la tarea' },
         description: { type: 'string', description: 'Descripción opcional con más detalle' },
@@ -22,8 +24,19 @@ export const CONVERSATION_TOOLS: Anthropic.Messages.Tool[] = [
           maximum: 5,
           description: '1=urgente/importante, 3=normal, 5=baja prioridad',
         },
-        dueAt: { type: 'string', description: 'Fecha/hora límite en ISO 8601' },
-        scheduledFor: { type: 'string', description: 'Fecha/hora programada para trabajar en ella (ISO 8601)' },
+        dueAt: {
+          type: 'string',
+          description:
+            'Momento exacto del recordatorio o fecha límite en ISO 8601 CON hora (ej: 2026-07-23T20:45:00). ' +
+            'OBLIGATORIO para taskType=REMINDER — pon aquí la hora exacta en que debe llegar la notificación. ' +
+            'También úsalo para reuniones, llamadas y deadlines con hora conocida.',
+        },
+        scheduledFor: {
+          type: 'string',
+          description:
+            'Fecha (solo día, sin hora) en que se planea trabajar en la tarea (ISO 8601 date, ej: 2026-07-24). ' +
+            'NO uses este campo para recordatorios con hora — usa dueAt en ese caso.',
+        },
       },
       required: ['taskType', 'title'],
     },

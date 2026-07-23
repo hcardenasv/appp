@@ -43,6 +43,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await this.bot.api.setMyCommands([
       { command: 'start',  description: 'Registrarse o dar la bienvenida de vuelta' },
       { command: 'ayuda',  description: 'Ver todos los comandos disponibles' },
+      { command: 'tareas', description: 'Ver y gestionar tus tareas en el navegador' },
       { command: 'email',  description: 'Configurar email: /email tu@correo.com' },
       { command: 'pwa',    description: 'Instalar la app web y activar notificaciones push' },
     ]).catch(err => this.logger.warn('No se pudo registrar comandos en Telegram', err));
@@ -97,6 +98,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         `*APPP — Asistente Personal de Productividad*\n\n` +
           `*Comandos:*\n` +
           `/start — Registrarse o dar la bienvenida\n` +
+          `/tareas — Ver tus tareas en el navegador \\(enlace 24h\\)\n` +
           `/email — Configurar email \\(ej: /email nombre@dominio\\.com\\)\n` +
           `/pwa — Instalar app web y activar notificaciones push\n` +
           `/ayuda — Mostrar este mensaje\n\n` +
@@ -123,6 +125,20 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           `Abre este enlace en Chrome o Edge para instalar APPP y activar notificaciones push:\n\n` +
           `${url}\n\n` +
           `⏱ El enlace expira en *5 minutos*. Si caduca, usa /pwa de nuevo.`,
+        { parse_mode: 'Markdown' },
+      );
+    });
+
+    bot.command('tareas', async (ctx) => {
+      if (!ctx.appUser) {
+        await ctx.reply('No estás registrado. Usa /start primero.');
+        return;
+      }
+      const appUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
+      const token  = await this.pwaService.generateWebSessionToken(ctx.appUser.userId);
+      const url    = `${appUrl}/tasks.html?token=${token}`;
+      await ctx.reply(
+        `📋 *Ver tus tareas*\n\nAbre este enlace para ver y filtrar tus tareas:\n\n${url}\n\n_El enlace es válido por 24 horas._`,
         { parse_mode: 'Markdown' },
       );
     });

@@ -237,6 +237,7 @@ export class ConversationService {
       `Tareas activas (incluye taskId para operaciones):\n${taskLines}\n\n` +
       `Reglas:\n` +
       `- Usa las herramientas para crear/modificar tareas; nunca respondas solo con texto cuando el usuario quiera hacer cambios.\n` +
+      `- RECORDATORIOS: cuando el usuario diga "recuérdame X a las HH:MM" usa taskType=REMINDER y dueAt con fecha y hora completa en ISO 8601 (ej: ${new Date().toISOString().slice(0,10)}T20:45:00). NUNCA uses scheduledFor para recordatorios con hora.\n` +
       `- Para posponer una tarea, usa update_task_status con toStatus=DEFERRED y newScheduledFor (fecha obligatoria).\n` +
       `- Responde siempre en español, de forma concisa y directa.\n` +
       `- Si el usuario pregunta qué tiene pendiente, usa get_daily_summary primero.`

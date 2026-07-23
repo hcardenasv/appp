@@ -93,6 +93,27 @@ export class TasksService {
     });
   }
 
+  async findFiltered(
+    userId: string,
+    statuses: string[],
+    from?: Date,
+    to?: Date,
+  ): Promise<Task[]> {
+    const dateClause = from || to
+      ? {
+          OR: [
+            { scheduledFor: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } },
+            { dueAt:        { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } },
+          ],
+        }
+      : {};
+
+    return this.prisma.task.findMany({
+      where: { userId, status: { in: statuses }, ...dateClause },
+      orderBy: [{ scheduledFor: 'asc' }, { priority: 'asc' }, { dueAt: 'asc' }],
+    });
+  }
+
   async findOne(taskId: string, userId: string): Promise<Task> {
     const task = await this.prisma.task.findUnique({ where: { taskId } });
     if (!task || task.userId !== userId) {

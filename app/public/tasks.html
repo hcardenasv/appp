@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APPP — Tareas</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4f46e5">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f0f1a;
+      --surface: #1a1a2e;
+      --surface2: #22223a;
+      --border:  #2d2d4e;
+      --accent:  #4f46e5;
+      --text:    #e2e8f0;
+      --muted:   #94a3b8;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.875rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; }
+    header .subtitle { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+
+    /* ── Filters ── */
+    .filters {
+      padding: 0.875rem 1.25rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .filter-group { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
+    .filter-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-right: 0.25rem; white-space: nowrap; }
+
+    .pill {
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .pill:hover { border-color: var(--accent); color: var(--text); }
+    .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .date-inputs { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .date-inputs input[type="date"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      padding: 0.3rem 0.6rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .date-inputs input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(.5); }
+    .date-sep { color: var(--muted); font-size: 0.8rem; }
+
+    .btn-refresh {
+      margin-left: auto;
+      padding: 0.35rem 0.9rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .btn-refresh:hover { background: var(--border); }
+
+    /* ── Summary strip ── */
+    .summary {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.625rem 1.25rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .summary::-webkit-scrollbar { display: none; }
+    .badge {
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-total     { background: rgba(148,163,184,.15); color: var(--muted); }
+    .badge-PENDING   { background: rgba(99,102,241,.18);  color: #818cf8; }
+    .badge-IN_PROGRESS { background: rgba(245,158,11,.18); color: #fbbf24; }
+    .badge-BLOCKED   { background: rgba(239,68,68,.18);   color: #f87171; }
+    .badge-DEFERRED  { background: rgba(167,139,250,.18); color: #c4b5fd; }
+    .badge-DONE      { background: rgba(16,185,129,.18);  color: #34d399; }
+    .badge-CANCELLED { background: rgba(148,163,184,.12); color: #64748b; }
+
+    /* ── Main content ── */
+    .main { padding: 1rem 1.25rem; }
+
+    /* ── Empty / Error / Loading ── */
+    .state-msg {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .state-msg .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; border-radius: 0.75rem; border: 1px solid var(--border); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    thead { background: var(--surface2); }
+    th {
+      padding: 0.625rem 0.875rem;
+      text-align: left;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 0.625rem 0.875rem;
+      border-bottom: 1px solid rgba(45,45,78,.5);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.025); }
+
+    .col-title { max-width: 260px; }
+    .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; display: block; }
+
+    /* Status badge inline */
+    .status {
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      white-space: nowrap;
+      display: inline-block;
+    }
+
+    /* Priority */
+    .priority { font-weight: 700; font-size: 0.8rem; }
+    .p1 { color: #f87171; }
+    .p2 { color: #fb923c; }
+    .p3 { color: #fbbf24; }
+    .p4 { color: #a3e635; }
+    .p5 { color: var(--muted); }
+
+    /* Progress bar */
+    .progress-wrap { width: 80px; }
+    .progress-bar {
+      height: 5px;
+      border-radius: 99px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #4f46e5, #7c3aed);
+      transition: width .4s;
+    }
+    .progress-pct { font-size: 0.7rem; color: var(--muted); text-align: right; margin-top: 2px; }
+
+    .date-cell { white-space: nowrap; font-size: 0.78rem; color: var(--muted); }
+    .date-cell.overdue { color: #f87171; }
+
+    /* ── Cards (mobile) ── */
+    @media (max-width: 640px) {
+      .table-wrap { display: none; }
+      .cards { display: flex; flex-direction: column; gap: 0.625rem; }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        padding: 0.875rem 1rem;
+      }
+      .card-header { display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.5rem; }
+      .card-title { font-weight: 600; font-size: 0.9rem; flex: 1; line-height: 1.4; }
+      .card-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; font-size: 0.75rem; color: var(--muted); }
+    }
+    @media (min-width: 641px) {
+      .cards { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.5rem">📋</span>
+  <h1>Tareas</h1>
+  <span class="subtitle" id="last-update"></span>
+</header>
+
+<div class="filters">
+  <div class="filter-group">
+    <span class="filter-label">Estado</span>
+    <button class="pill active" data-status="PENDING">Pendiente</button>
+    <button class="pill active" data-status="IN_PROGRESS">En curso</button>
+    <button class="pill active" data-status="BLOCKED">Bloqueada</button>
+    <button class="pill" data-status="DEFERRED">Diferida</button>
+    <button class="pill" data-status="DONE">Hecha</button>
+    <button class="pill" data-status="CANCELLED">Cancelada</button>
+  </div>
+  <div class="filter-group">
+    <span class="filter-label">Fecha</span>
+    <div class="date-inputs">
+      <input type="date" id="date-from" title="Desde">
+      <span class="date-sep">→</span>
+      <input type="date" id="date-to"   title="Hasta">
+    </div>
+  </div>
+  <button class="btn-refresh" id="btn-refresh">↻ Actualizar</button>
+</div>
+
+<div class="summary" id="summary"></div>
+
+<div class="main">
+  <div class="state-msg" id="state-msg">
+    <div class="icon">⏳</div>
+    Cargando tareas…
+  </div>
+
+  <!-- Table (desktop) -->
+  <div class="table-wrap" id="table-wrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>Título</th>
+          <th>Estado</th>
+          <th>Prioridad</th>
+          <th>Programada</th>
+          <th>Vence</th>
+          <th>Progreso</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Cards (mobile) -->
+  <div class="cards" id="cards"></div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const TOKEN  = params.get('token') ?? '';
+
+  /* ── Status metadata ── */
+  const STATUS_META = {
+    PENDING:     { label: 'Pendiente',  cls: 'badge-PENDING',    style: 'background:rgba(99,102,241,.2);color:#818cf8' },
+    IN_PROGRESS: { label: 'En curso',   cls: 'badge-IN_PROGRESS',style: 'background:rgba(245,158,11,.2);color:#fbbf24' },
+    BLOCKED:     { label: 'Bloqueada',  cls: 'badge-BLOCKED',    style: 'background:rgba(239,68,68,.2);color:#f87171' },
+    DEFERRED:    { label: 'Diferida',   cls: 'badge-DEFERRED',   style: 'background:rgba(167,139,250,.2);color:#c4b5fd' },
+    DONE:        { label: 'Hecha',      cls: 'badge-DONE',       style: 'background:rgba(16,185,129,.2);color:#34d399' },
+    CANCELLED:   { label: 'Cancelada',  cls: 'badge-CANCELLED',  style: 'background:rgba(148,163,184,.1);color:#64748b' },
+  };
+
+  /* ── State ── */
+  let tasks = [];
+  let loading = false;
+
+  /* ── DOM refs ── */
+  const summaryEl  = document.getElementById('summary');
+  const stateEl    = document.getElementById('state-msg');
+  const tableWrap  = document.getElementById('table-wrap');
+  const tbody      = document.getElementById('tbody');
+  const cardsEl    = document.getElementById('cards');
+  const lastUpdate = document.getElementById('last-update');
+  const dateFrom   = document.getElementById('date-from');
+  const dateTo     = document.getElementById('date-to');
+
+  /* ── Pills ── */
+  const pills = [...document.querySelectorAll('.pill[data-status]')];
+  pills.forEach(p => p.addEventListener('click', () => {
+    p.classList.toggle('active');
+    load();
+  }));
+
+  function activeStatuses() {
+    return pills.filter(p => p.classList.contains('active')).map(p => p.dataset.status);
+  }
+
+  /* ── Date filters ── */
+  dateFrom.addEventListener('change', load);
+  dateTo.addEventListener('change', load);
+  document.getElementById('btn-refresh').addEventListener('click', load);
+
+  /* ── Helpers ── */
+  function fmt(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  }
+
+  function isOverdue(dateStr) {
+    if (!dateStr) return false;
+    return new Date(dateStr) < new Date();
+  }
+
+  function statusBadge(s) {
+    const m = STATUS_META[s] ?? { label: s, style: '' };
+    return `<span class="status" style="${m.style}">${m.label}</span>`;
+  }
+
+  function priorityHtml(p) {
+    const cls = p <= 1 ? 'p1' : p === 2 ? 'p2' : p === 3 ? 'p3' : p === 4 ? 'p4' : 'p5';
+    return `<span class="priority ${cls}">P${p}</span>`;
+  }
+
+  function progressHtml(pct) {
+    const v = pct ?? 0;
+    return `<div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" style="width:${v}%"></div></div>
+      <div class="progress-pct">${v}%</div>
+    </div>`;
+  }
+
+  /* ── Render ── */
+  function renderSummary() {
+    const counts = {};
+    for (const t of tasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
+
+    const parts = [`<span class="badge badge-total">${tasks.length} tareas</span>`];
+    for (const [s, m] of Object.entries(STATUS_META)) {
+      if (counts[s]) parts.push(`<span class="badge ${m.cls}">${m.label}: ${counts[s]}</span>`);
+    }
+    summaryEl.innerHTML = parts.join('');
+  }
+
+  function renderTable() {
+    if (!tasks.length) {
+      stateEl.innerHTML = '<div class="icon">🎉</div>No hay tareas con los filtros actuales.';
+      stateEl.style.display = 'block';
+      tableWrap.style.display = 'none';
+      cardsEl.innerHTML = '';
+      return;
+    }
+    stateEl.style.display = 'none';
+
+    // Table rows
+    tbody.innerHTML = tasks.map(t => {
+      const dueCls = isOverdue(t.dueAt) && t.status !== 'DONE' && t.status !== 'CANCELLED' ? 'overdue' : '';
+      return `<tr>
+        <td class="col-title"><span class="title-text" title="${esc(t.title)}">${esc(t.title)}</span></td>
+        <td>${statusBadge(t.status)}</td>
+        <td>${priorityHtml(t.priority)}</td>
+        <td class="date-cell">${fmt(t.scheduledFor)}</td>
+        <td class="date-cell ${dueCls}">${fmt(t.dueAt)}</td>
+        <td>${progressHtml(t.progressPct)}</td>
+      </tr>`;
+    }).join('');
+    tableWrap.style.display = 'block';
+
+    // Cards
+    cardsEl.innerHTML = tasks.map(t => {
+      const dueCls = isOverdue(t.dueAt) && t.status !== 'DONE' && t.status !== 'CANCELLED' ? 'overdue' : '';
+      return `<div class="card">
+        <div class="card-header">
+          <div class="card-title">${esc(t.title)}</div>
+          ${statusBadge(t.status)}
+        </div>
+        <div class="card-meta">
+          ${priorityHtml(t.priority)}
+          ${t.scheduledFor ? `<span>📅 ${fmt(t.scheduledFor)}</span>` : ''}
+          ${t.dueAt ? `<span class="${dueCls}">⏰ ${fmt(t.dueAt)}</span>` : ''}
+          ${t.progressPct != null ? `<span>▶ ${t.progressPct}%</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Load ── */
+  async function load() {
+    if (loading) return;
+    if (!TOKEN) {
+      stateEl.innerHTML = '<div class="icon">🔒</div>Sin token de acceso. Escribe <strong>/tareas</strong> en Telegram.';
+      return;
+    }
+
+    loading = true;
+    stateEl.innerHTML = '<div class="icon">⏳</div>Cargando…';
+    stateEl.style.display = 'block';
+    tableWrap.style.display = 'none';
+    cardsEl.innerHTML = '';
+
+    const statuses = activeStatuses();
+    const qs = new URLSearchParams({ token: TOKEN });
+    if (statuses.length) qs.set('status', statuses.join(','));
+    if (dateFrom.value) qs.set('from', dateFrom.value);
+    if (dateTo.value)   qs.set('to',   dateTo.value);
+
+    try {
+      const res = await fetch(`/tasks-api/list?${qs}`);
+      if (res.status === 401) {
+        stateEl.innerHTML = '<div class="icon">🔒</div>Sesión expirada. Escribe <strong>/tareas</strong> en Telegram para obtener un nuevo enlace.';
+        loading = false;
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      tasks = await res.json();
+      renderSummary();
+      renderTable();
+      const now = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+      lastUpdate.textContent = `Actualizado ${now}`;
+    } catch (err) {
+      stateEl.innerHTML = `<div class="icon">❌</div>Error al cargar: ${err.message}`;
+    }
+    loading = false;
+  }
+
+  // Auto-refresh cada 60 s
+  setInterval(load, 60_000);
+  load();
+</script>
+</body>
+</html>

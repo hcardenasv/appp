@@ -170,7 +170,7 @@ export class NotificationService {
     await this.queueService.escalation.add(
       JOB_NAMES.ESCALATION,
       { notificationId, userId, title, body },
-      { delay: ESCALATION_DELAY_MS, jobId: `escalation:${notificationId}`, removeOnComplete: true, removeOnFail: 3 },
+      { delay: ESCALATION_DELAY_MS, jobId: `escalation-${notificationId}`, removeOnComplete: true, removeOnFail: 3 },
     );
   }
 

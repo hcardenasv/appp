@@ -19,6 +19,7 @@ export const TASK_TYPES = [
   'DEADLINE',
   'AGREEMENT',
   'PROJECT_MILESTONE',
+  'REMINDER',
   'GENERIC',
 ] as const;
 

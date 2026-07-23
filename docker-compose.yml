@@ -8,7 +8,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appp -d appp"]
@@ -22,7 +22,7 @@ services:
     volumes:
       - redisdata:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -45,8 +45,12 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
+      APP_URL: ${APP_URL}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_EMAIL: ${VAPID_EMAIL:-mailto:admin@appp.local}
       PORT: ${PORT:-3000}
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: production
       TZ: America/Santiago
     depends_on:
       postgres:
@@ -68,21 +72,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  vault-agent:
-    build: ./vault-agent
-    environment:
-      DATABASE_URL: postgres://appp:${PG_PASS}@postgres:5432/appp
-      VAULT_PATH: /vault
-      VAULT_SYNC_INTERVAL_MS: ${VAULT_SYNC_INTERVAL_MS:-60000}
-      NODE_ENV: ${NODE_ENV:-production}
-    volumes:
-      - vault:/vault
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
-  pgdata:  {}
+  pgdata:    {}
   redisdata: {}
-  vault:   {}

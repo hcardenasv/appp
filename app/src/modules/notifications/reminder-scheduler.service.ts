@@ -39,11 +39,12 @@ export class ReminderSchedulerService implements OnModuleInit {
 
   /**
    * Crea un delayed BullMQ job para el reminder y persiste el jobId.
-   * Idempotente: usa jobId fijo `reminder:{reminderId}`.
+   * Idempotente: usa jobId fijo `reminder-{reminderId}`.
+   * NOTA: BullMQ v5 prohíbe ':' en jobIds custom — se usa '-' como separador.
    */
   async scheduleReminder(reminder: Reminder): Promise<void> {
     const delay = Math.max(0, reminder.remindAt.getTime() - Date.now());
-    const jobId = `reminder:${reminder.reminderId}`;
+    const jobId = `reminder-${reminder.reminderId}`;
 
     const job = await this.queues.reminders.add(
       REMINDER_JOB_FIRE,

@@ -10,5 +10,6 @@ export const REMINDER_TEMPLATES: Record<string, ReminderOffset[]> = {
   AGREEMENT:         [{ minutesBefore: 24 * 60 }, { minutesBefore: 4 * 60 }],
   PROJECT_MILESTONE: [{ minutesBefore: 3 * 24 * 60 }, { minutesBefore: 24 * 60 }],
   EMAIL_SEND:        [{ minutesBefore: 60 }, { minutesBefore: 10 }],
+  REMINDER:          [{ minutesBefore: 0 }],   // dispara exactamente en dueAt
   GENERIC:           [{ minutesBefore: 60 }],
 };

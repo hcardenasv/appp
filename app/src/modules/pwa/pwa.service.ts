@@ -4,7 +4,8 @@ import type IORedis from 'ioredis';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { PrismaService } from '../../database/prisma.service';
 
-const TOKEN_TTL_SEC = 300; // 5 minutes
+const TOKEN_TTL_SEC         = 300;    // 5 minutes — one-time PWA subscribe
+const WEB_SESSION_TTL_SEC   = 86400; // 24 hours  — reusable tasks page
 
 export interface SubscriptionKeys {
   auth:   string;
@@ -22,6 +23,17 @@ export class PwaService {
     const token = randomUUID();
     await this.redis.set(`pwa_token:${token}`, userId, 'EX', TOKEN_TTL_SEC);
     return token;
+  }
+
+  async generateWebSessionToken(userId: string): Promise<string> {
+    const token = randomUUID();
+    await this.redis.set(`web_session:${token}`, userId, 'EX', WEB_SESSION_TTL_SEC);
+    return token;
+  }
+
+  async verifyWebSessionToken(token: string): Promise<string | null> {
+    if (!token) return null;
+    return this.redis.get(`web_session:${token}`);
   }
 
   async consumeToken(token: string): Promise<string | null> {

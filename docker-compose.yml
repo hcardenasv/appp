@@ -63,7 +63,7 @@ services:
 
   worker:
     build: ./app
-    command: ["node", "dist/worker.js"]
+    command: ["node", "dist/src/worker.js"]
     environment: *app-env
     depends_on:
       postgres:

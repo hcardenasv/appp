@@ -99,6 +99,7 @@ model Task {
   deferCount   Int       @default(0) @map("defer_count")
   completedAt  DateTime? @db.Timestamptz(6) @map("completed_at")
   progressPct  Int?      @db.SmallInt @map("progress_pct")
+  notes        String?   @db.Text
   createdAt    DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
   updatedAt    DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
 

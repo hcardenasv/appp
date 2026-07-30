@@ -199,6 +199,7 @@ export class TasksService {
         }),
         ...(dto.projectId !== undefined && { projectId: dto.projectId }),
         ...(dto.progressPct !== undefined && { progressPct: dto.progressPct }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
       },
     });
   }

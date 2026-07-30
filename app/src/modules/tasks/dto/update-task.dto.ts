@@ -32,4 +32,8 @@ export class UpdateTaskDto {
   @Max(100)
   @IsOptional()
   progressPct?: number | null;
+
+  @IsString()
+  @IsOptional()
+  notes?: string | null;
 }

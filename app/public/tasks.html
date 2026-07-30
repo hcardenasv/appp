@@ -113,13 +113,13 @@
       font-weight: 600;
       white-space: nowrap;
     }
-    .badge-total     { background: rgba(148,163,184,.15); color: var(--muted); }
-    .badge-PENDING   { background: rgba(99,102,241,.18);  color: #818cf8; }
-    .badge-IN_PROGRESS { background: rgba(245,158,11,.18); color: #fbbf24; }
-    .badge-BLOCKED   { background: rgba(239,68,68,.18);   color: #f87171; }
-    .badge-DEFERRED  { background: rgba(167,139,250,.18); color: #c4b5fd; }
-    .badge-DONE      { background: rgba(16,185,129,.18);  color: #34d399; }
-    .badge-CANCELLED { background: rgba(148,163,184,.12); color: #64748b; }
+    .badge-total       { background: rgba(148,163,184,.15); color: var(--muted); }
+    .badge-PENDING     { background: rgba(99,102,241,.18);  color: #818cf8; }
+    .badge-IN_PROGRESS { background: rgba(245,158,11,.18);  color: #fbbf24; }
+    .badge-BLOCKED     { background: rgba(239,68,68,.18);   color: #f87171; }
+    .badge-DEFERRED    { background: rgba(167,139,250,.18); color: #c4b5fd; }
+    .badge-DONE        { background: rgba(16,185,129,.18);  color: #34d399; }
+    .badge-CANCELLED   { background: rgba(148,163,184,.12); color: #64748b; }
 
     /* ── Main content ── */
     .main { padding: 1rem 1.25rem; }
@@ -158,7 +158,9 @@
     tr:hover td { background: rgba(255,255,255,.025); }
 
     .col-title { max-width: 260px; }
+    .title-wrap { display: flex; flex-direction: column; gap: 0.15rem; }
     .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; display: block; }
+    .notes-preview { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 
     /* Status badge inline */
     .status {
@@ -197,6 +199,20 @@
     .date-cell { white-space: nowrap; font-size: 0.78rem; color: var(--muted); }
     .date-cell.overdue { color: #f87171; }
 
+    /* Action button */
+    .btn-action {
+      padding: 0.25rem 0.6rem;
+      border-radius: 0.4rem;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 0.75rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s;
+    }
+    .btn-action:hover { background: var(--accent); border-color: var(--accent); }
+
     /* ── Cards (mobile) ── */
     @media (max-width: 640px) {
       .table-wrap { display: none; }
@@ -209,11 +225,169 @@
       }
       .card-header { display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.5rem; }
       .card-title { font-weight: 600; font-size: 0.9rem; flex: 1; line-height: 1.4; }
+      .card-notes { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.5rem; line-height: 1.4; }
       .card-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; font-size: 0.75rem; color: var(--muted); }
+      .card-footer { margin-top: 0.625rem; display: flex; justify-content: flex-end; }
     }
     @media (min-width: 641px) {
       .cards { display: none; }
     }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.65);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90dvh;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    .modal-title {
+      flex: 1;
+      font-weight: 700;
+      font-size: 1rem;
+      line-height: 1.4;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.3rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0.1rem;
+    }
+    .modal-close:hover { color: var(--text); }
+
+    .modal-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+    }
+    .modal-section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      padding-bottom: 0.375rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .btn-transition {
+      padding: 0.45rem 0.9rem;
+      border-radius: 0.5rem;
+      border: 1px solid transparent;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn-transition:hover { opacity: .85; }
+    .btn-transition:active { transform: scale(.97); }
+    .btn-transition.selected { outline: 2px solid #fff; outline-offset: 2px; }
+
+    .no-transitions {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .modal label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    .modal textarea, .modal input[type="date"] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      padding: 0.5rem 0.65rem;
+      font-size: 0.85rem;
+      font-family: inherit;
+      resize: vertical;
+    }
+    .modal textarea:focus, .modal input[type="date"]:focus {
+      outline: 1px solid var(--accent);
+      border-color: var(--accent);
+    }
+    .modal input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(.5); }
+
+    .defer-row { display: none; flex-direction: column; gap: 0.25rem; }
+    .defer-row.visible { display: flex; }
+
+    .modal-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .btn-primary {
+      padding: 0.55rem 1rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 0.5rem;
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+      width: 100%;
+    }
+    .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary:not(:disabled):hover { opacity: .88; }
+
+    .btn-secondary {
+      padding: 0.55rem 1rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      width: 100%;
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    .modal-msg {
+      font-size: 0.8rem;
+      padding: 0.4rem 0.65rem;
+      border-radius: 0.4rem;
+      display: none;
+    }
+    .modal-msg.ok    { background: rgba(16,185,129,.15); color: #34d399; display: block; }
+    .modal-msg.error { background: rgba(239,68,68,.15);  color: #f87171; display: block; }
+
+    .divider { border: none; border-top: 1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -264,6 +438,7 @@
           <th>Programada</th>
           <th>Vence</th>
           <th>Progreso</th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -274,46 +449,116 @@
   <div class="cards" id="cards"></div>
 </div>
 
+<!-- ── Modal de acciones ── -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-task-title">
+
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-task-title">—</div>
+        <div style="margin-top:.25rem" id="modal-current-status"></div>
+      </div>
+      <button class="modal-close" id="modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <!-- Estado -->
+    <div class="modal-section" id="section-status">
+      <div class="modal-section-title">Cambiar estado</div>
+      <div class="action-buttons" id="action-buttons"></div>
+      <div class="defer-row" id="defer-row">
+        <label for="defer-date">Nueva fecha programada</label>
+        <input type="date" id="defer-date">
+      </div>
+      <div>
+        <label for="change-note">Nota del cambio (opcional)</label>
+        <textarea id="change-note" rows="2" placeholder="Motivo del cambio de estado…"></textarea>
+      </div>
+      <div id="modal-msg-status" class="modal-msg"></div>
+      <button class="btn-primary" id="btn-apply-status" disabled>Aplicar cambio</button>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Observaciones -->
+    <div class="modal-section">
+      <div class="modal-section-title">Observaciones</div>
+      <textarea id="notes-textarea" rows="4" placeholder="Notas libres sobre esta tarea…"></textarea>
+      <div id="modal-msg-notes" class="modal-msg"></div>
+      <button class="btn-secondary" id="btn-save-notes">Guardar observaciones</button>
+    </div>
+
+  </div>
+</div>
+
 <script>
   const params = new URLSearchParams(location.search);
   const TOKEN  = params.get('token') ?? '';
 
+  /* ── FSM transitions (mirror of task-status.fsm.ts) ── */
+  const TRANSITIONS = {
+    PENDING:     ['IN_PROGRESS', 'DEFERRED', 'BLOCKED', 'CANCELLED'],
+    IN_PROGRESS: ['DONE', 'BLOCKED', 'DEFERRED', 'CANCELLED'],
+    BLOCKED:     ['IN_PROGRESS', 'CANCELLED'],
+    DEFERRED:    ['PENDING', 'CANCELLED'],
+    DONE:        [],
+    CANCELLED:   [],
+  };
+
+  const ACTION_META = {
+    IN_PROGRESS: { label: 'Iniciar',   bg: 'rgba(245,158,11,.25)',  color: '#fbbf24', border: '#b45309' },
+    DONE:        { label: 'Completar', bg: 'rgba(16,185,129,.25)',  color: '#34d399', border: '#065f46' },
+    CANCELLED:   { label: 'Cancelar',  bg: 'rgba(239,68,68,.2)',    color: '#f87171', border: '#991b1b' },
+    DEFERRED:    { label: 'Posponer',  bg: 'rgba(167,139,250,.2)',  color: '#c4b5fd', border: '#6d28d9' },
+    BLOCKED:     { label: 'Bloquear',  bg: 'rgba(239,68,68,.15)',   color: '#fca5a5', border: '#7f1d1d' },
+    PENDING:     { label: 'Retomar',   bg: 'rgba(99,102,241,.2)',   color: '#818cf8', border: '#3730a3' },
+  };
+
   /* ── Status metadata ── */
   const STATUS_META = {
-    PENDING:     { label: 'Pendiente',  cls: 'badge-PENDING',    style: 'background:rgba(99,102,241,.2);color:#818cf8' },
-    IN_PROGRESS: { label: 'En curso',   cls: 'badge-IN_PROGRESS',style: 'background:rgba(245,158,11,.2);color:#fbbf24' },
-    BLOCKED:     { label: 'Bloqueada',  cls: 'badge-BLOCKED',    style: 'background:rgba(239,68,68,.2);color:#f87171' },
-    DEFERRED:    { label: 'Diferida',   cls: 'badge-DEFERRED',   style: 'background:rgba(167,139,250,.2);color:#c4b5fd' },
-    DONE:        { label: 'Hecha',      cls: 'badge-DONE',       style: 'background:rgba(16,185,129,.2);color:#34d399' },
-    CANCELLED:   { label: 'Cancelada',  cls: 'badge-CANCELLED',  style: 'background:rgba(148,163,184,.1);color:#64748b' },
+    PENDING:     { label: 'Pendiente',  cls: 'badge-PENDING',     style: 'background:rgba(99,102,241,.2);color:#818cf8' },
+    IN_PROGRESS: { label: 'En curso',   cls: 'badge-IN_PROGRESS', style: 'background:rgba(245,158,11,.2);color:#fbbf24' },
+    BLOCKED:     { label: 'Bloqueada',  cls: 'badge-BLOCKED',     style: 'background:rgba(239,68,68,.2);color:#f87171' },
+    DEFERRED:    { label: 'Diferida',   cls: 'badge-DEFERRED',    style: 'background:rgba(167,139,250,.2);color:#c4b5fd' },
+    DONE:        { label: 'Hecha',      cls: 'badge-DONE',        style: 'background:rgba(16,185,129,.2);color:#34d399' },
+    CANCELLED:   { label: 'Cancelada',  cls: 'badge-CANCELLED',   style: 'background:rgba(148,163,184,.1);color:#64748b' },
   };
 
   /* ── State ── */
   let tasks = [];
   let loading = false;
+  let activeTask = null;
+  let selectedTarget = null;
 
   /* ── DOM refs ── */
-  const summaryEl  = document.getElementById('summary');
-  const stateEl    = document.getElementById('state-msg');
-  const tableWrap  = document.getElementById('table-wrap');
-  const tbody      = document.getElementById('tbody');
-  const cardsEl    = document.getElementById('cards');
-  const lastUpdate = document.getElementById('last-update');
-  const dateFrom   = document.getElementById('date-from');
-  const dateTo     = document.getElementById('date-to');
+  const summaryEl   = document.getElementById('summary');
+  const stateEl     = document.getElementById('state-msg');
+  const tableWrap   = document.getElementById('table-wrap');
+  const tbody       = document.getElementById('tbody');
+  const cardsEl     = document.getElementById('cards');
+  const lastUpdate  = document.getElementById('last-update');
+  const dateFrom    = document.getElementById('date-from');
+  const dateTo      = document.getElementById('date-to');
+  const backdrop    = document.getElementById('modal-backdrop');
+  const modalTitle  = document.getElementById('modal-task-title');
+  const modalStatus = document.getElementById('modal-current-status');
+  const actionBtns  = document.getElementById('action-buttons');
+  const deferRow    = document.getElementById('defer-row');
+  const deferDate   = document.getElementById('defer-date');
+  const changeNote  = document.getElementById('change-note');
+  const notesTA     = document.getElementById('notes-textarea');
+  const btnApply    = document.getElementById('btn-apply-status');
+  const btnNotes    = document.getElementById('btn-save-notes');
+  const msgStatus   = document.getElementById('modal-msg-status');
+  const msgNotes    = document.getElementById('modal-msg-notes');
 
   /* ── Pills ── */
   const pills = [...document.querySelectorAll('.pill[data-status]')];
-  pills.forEach(p => p.addEventListener('click', () => {
-    p.classList.toggle('active');
-    load();
-  }));
+  pills.forEach(p => p.addEventListener('click', () => { p.classList.toggle('active'); load(); }));
 
   function activeStatuses() {
     return pills.filter(p => p.classList.contains('active')).map(p => p.dataset.status);
   }
 
-  /* ── Date filters ── */
   dateFrom.addEventListener('change', load);
   dateTo.addEventListener('change', load);
   document.getElementById('btn-refresh').addEventListener('click', load);
@@ -348,11 +593,14 @@
     </div>`;
   }
 
+  function esc(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
   /* ── Render ── */
   function renderSummary() {
     const counts = {};
     for (const t of tasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
-
     const parts = [`<span class="badge badge-total">${tasks.length} tareas</span>`];
     for (const [s, m] of Object.entries(STATUS_META)) {
       if (counts[s]) parts.push(`<span class="badge ${m.cls}">${m.label}: ${counts[s]}</span>`);
@@ -370,21 +618,26 @@
     }
     stateEl.style.display = 'none';
 
-    // Table rows
     tbody.innerHTML = tasks.map(t => {
       const dueCls = isOverdue(t.dueAt) && t.status !== 'DONE' && t.status !== 'CANCELLED' ? 'overdue' : '';
+      const notesPreview = t.notes ? `<span class="notes-preview" title="${esc(t.notes)}">${esc(t.notes)}</span>` : '';
       return `<tr>
-        <td class="col-title"><span class="title-text" title="${esc(t.title)}">${esc(t.title)}</span></td>
+        <td class="col-title">
+          <div class="title-wrap">
+            <span class="title-text" title="${esc(t.title)}">${esc(t.title)}</span>
+            ${notesPreview}
+          </div>
+        </td>
         <td>${statusBadge(t.status)}</td>
         <td>${priorityHtml(t.priority)}</td>
         <td class="date-cell">${fmt(t.scheduledFor)}</td>
         <td class="date-cell ${dueCls}">${fmt(t.dueAt)}</td>
         <td>${progressHtml(t.progressPct)}</td>
+        <td><button class="btn-action" data-id="${t.taskId}">Acciones</button></td>
       </tr>`;
     }).join('');
     tableWrap.style.display = 'block';
 
-    // Cards
     cardsEl.innerHTML = tasks.map(t => {
       const dueCls = isOverdue(t.dueAt) && t.status !== 'DONE' && t.status !== 'CANCELLED' ? 'overdue' : '';
       return `<div class="card">
@@ -392,18 +645,22 @@
           <div class="card-title">${esc(t.title)}</div>
           ${statusBadge(t.status)}
         </div>
+        ${t.notes ? `<div class="card-notes">${esc(t.notes)}</div>` : ''}
         <div class="card-meta">
           ${priorityHtml(t.priority)}
           ${t.scheduledFor ? `<span>📅 ${fmt(t.scheduledFor)}</span>` : ''}
           ${t.dueAt ? `<span class="${dueCls}">⏰ ${fmt(t.dueAt)}</span>` : ''}
           ${t.progressPct != null ? `<span>▶ ${t.progressPct}%</span>` : ''}
         </div>
+        <div class="card-footer">
+          <button class="btn-action" data-id="${t.taskId}">Acciones</button>
+        </div>
       </div>`;
     }).join('');
-  }
 
-  function esc(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    document.querySelectorAll('.btn-action[data-id]').forEach(btn => {
+      btn.addEventListener('click', () => openModal(btn.dataset.id));
+    });
   }
 
   /* ── Load ── */
@@ -437,13 +694,147 @@
       tasks = await res.json();
       renderSummary();
       renderTable();
-      const now = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
-      lastUpdate.textContent = `Actualizado ${now}`;
+      lastUpdate.textContent = `Actualizado ${new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`;
     } catch (err) {
       stateEl.innerHTML = `<div class="icon">❌</div>Error al cargar: ${err.message}`;
     }
     loading = false;
   }
+
+  /* ── Modal ── */
+  function openModal(taskId) {
+    activeTask = tasks.find(t => t.taskId === taskId);
+    if (!activeTask) return;
+
+    selectedTarget = null;
+    modalTitle.textContent = activeTask.title;
+    modalStatus.innerHTML = statusBadge(activeTask.status);
+
+    // Build transition buttons
+    const transitions = TRANSITIONS[activeTask.status] ?? [];
+    if (transitions.length === 0) {
+      actionBtns.innerHTML = `<span class="no-transitions">Este estado no permite más cambios.</span>`;
+      btnApply.disabled = true;
+    } else {
+      actionBtns.innerHTML = transitions.map(t => {
+        const m = ACTION_META[t] ?? { label: t, bg: 'var(--surface2)', color: 'var(--text)', border: 'var(--border)' };
+        return `<button class="btn-transition" data-target="${t}"
+          style="background:${m.bg};color:${m.color};border-color:${m.border}">${m.label}</button>`;
+      }).join('');
+      actionBtns.querySelectorAll('.btn-transition').forEach(btn => {
+        btn.addEventListener('click', () => selectTransition(btn));
+      });
+      btnApply.disabled = true;
+    }
+
+    deferRow.classList.remove('visible');
+    deferDate.value = '';
+    changeNote.value = '';
+    notesTA.value = activeTask.notes ?? '';
+    clearMsg(msgStatus);
+    clearMsg(msgNotes);
+
+    backdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function selectTransition(btn) {
+    actionBtns.querySelectorAll('.btn-transition').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedTarget = btn.dataset.target;
+    btnApply.disabled = false;
+
+    if (selectedTarget === 'DEFERRED') {
+      deferRow.classList.add('visible');
+    } else {
+      deferRow.classList.remove('visible');
+      deferDate.value = '';
+    }
+  }
+
+  function closeModal() {
+    backdrop.classList.remove('open');
+    document.body.style.overflow = '';
+    activeTask = null;
+    selectedTarget = null;
+  }
+
+  function showMsg(el, type, text) {
+    el.className = `modal-msg ${type}`;
+    el.textContent = text;
+  }
+  function clearMsg(el) {
+    el.className = 'modal-msg';
+    el.textContent = '';
+  }
+
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  btnApply.addEventListener('click', async () => {
+    if (!activeTask || !selectedTarget) return;
+    if (selectedTarget === 'DEFERRED' && !deferDate.value) {
+      showMsg(msgStatus, 'error', 'Selecciona la nueva fecha para posponer.');
+      return;
+    }
+
+    btnApply.disabled = true;
+    clearMsg(msgStatus);
+    try {
+      const body = { token: TOKEN, toStatus: selectedTarget };
+      if (changeNote.value.trim()) body.note = changeNote.value.trim();
+      if (selectedTarget === 'DEFERRED') body.deferTo = deferDate.value;
+
+      const res = await fetch(`/tasks-api/${activeTask.taskId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
+
+      showMsg(msgStatus, 'ok', 'Estado actualizado correctamente.');
+      // update local state
+      const t = tasks.find(x => x.taskId === activeTask.taskId);
+      if (t) { t.status = selectedTarget; modalStatus.innerHTML = statusBadge(selectedTarget); }
+      activeTask.status = selectedTarget;
+      selectedTarget = null;
+      actionBtns.querySelectorAll('.btn-transition').forEach(b => b.classList.remove('selected'));
+      btnApply.disabled = true;
+      deferRow.classList.remove('visible');
+
+      // Rebuild buttons for new status
+      setTimeout(() => openModal(activeTask.taskId), 600);
+      load();
+    } catch (err) {
+      showMsg(msgStatus, 'error', err.message);
+      btnApply.disabled = false;
+    }
+  });
+
+  btnNotes.addEventListener('click', async () => {
+    if (!activeTask) return;
+    btnNotes.disabled = true;
+    clearMsg(msgNotes);
+    try {
+      const res = await fetch(`/tasks-api/${activeTask.taskId}/notes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: TOKEN, notes: notesTA.value || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
+      showMsg(msgNotes, 'ok', 'Observaciones guardadas.');
+      const t = tasks.find(x => x.taskId === activeTask.taskId);
+      if (t) t.notes = notesTA.value || null;
+      activeTask.notes = notesTA.value || null;
+      renderTable();
+    } catch (err) {
+      showMsg(msgNotes, 'error', err.message);
+    }
+    btnNotes.disabled = false;
+  });
 
   // Auto-refresh cada 60 s
   setInterval(load, 60_000);

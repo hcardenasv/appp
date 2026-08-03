@@ -7,7 +7,7 @@ export type TaskStatus =
   | 'DEFERRED';
 
 const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[]>> = {
-  PENDING:     ['IN_PROGRESS', 'DEFERRED', 'BLOCKED', 'CANCELLED'],
+  PENDING:     ['IN_PROGRESS', 'DONE', 'DEFERRED', 'BLOCKED', 'CANCELLED'],
   IN_PROGRESS: ['DONE', 'BLOCKED', 'DEFERRED', 'CANCELLED'],
   BLOCKED:     ['IN_PROGRESS', 'CANCELLED'],
   DEFERRED:    ['PENDING', 'CANCELLED'],

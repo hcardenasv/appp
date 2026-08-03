@@ -157,10 +157,16 @@
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: rgba(255,255,255,.025); }
 
-    .col-title { max-width: 260px; }
-    .title-wrap { display: flex; flex-direction: column; gap: 0.15rem; }
-    .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; display: block; }
-    .notes-preview { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+    .col-title { max-width: 280px; }
+    .title-wrap { display: flex; flex-direction: column; gap: 0.2rem; }
+    .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; display: block; }
+    .notes-preview {
+      font-size: 0.72rem; color: var(--muted);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; max-width: 260px; line-height: 1.4;
+      cursor: pointer;
+    }
+    .notes-preview:hover { color: var(--text); }
 
     /* Status badge inline */
     .status {
@@ -199,7 +205,8 @@
     .date-cell { white-space: nowrap; font-size: 0.78rem; color: var(--muted); }
     .date-cell.overdue { color: #f87171; }
 
-    /* Action button */
+    /* Action buttons */
+    .cell-actions { display: flex; gap: 0.35rem; align-items: center; }
     .btn-action {
       padding: 0.25rem 0.6rem;
       border-radius: 0.4rem;
@@ -212,6 +219,18 @@
       transition: background .15s;
     }
     .btn-action:hover { background: var(--accent); border-color: var(--accent); }
+    .btn-done-quick {
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.4rem;
+      border: 1px solid #065f46;
+      background: rgba(16,185,129,.15);
+      color: #34d399;
+      font-size: 0.75rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s;
+    }
+    .btn-done-quick:hover { background: rgba(16,185,129,.35); }
 
     /* ── Cards (mobile) ── */
     @media (max-width: 640px) {
@@ -227,7 +246,7 @@
       .card-title { font-weight: 600; font-size: 0.9rem; flex: 1; line-height: 1.4; }
       .card-notes { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.5rem; line-height: 1.4; }
       .card-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; font-size: 0.75rem; color: var(--muted); }
-      .card-footer { margin-top: 0.625rem; display: flex; justify-content: flex-end; }
+      .card-footer { margin-top: 0.625rem; display: flex; justify-content: flex-end; gap: 0.5rem; }
     }
     @media (min-width: 641px) {
       .cards { display: none; }
@@ -436,7 +455,7 @@
           <th>Estado</th>
           <th>Prioridad</th>
           <th>Programada</th>
-          <th>Vence</th>
+          <th>Vence (hora)</th>
           <th>Progreso</th>
           <th></th>
         </tr>
@@ -496,13 +515,16 @@
 
   /* ── FSM transitions (mirror of task-status.fsm.ts) ── */
   const TRANSITIONS = {
-    PENDING:     ['IN_PROGRESS', 'DEFERRED', 'BLOCKED', 'CANCELLED'],
+    PENDING:     ['IN_PROGRESS', 'DONE', 'DEFERRED', 'BLOCKED', 'CANCELLED'],
     IN_PROGRESS: ['DONE', 'BLOCKED', 'DEFERRED', 'CANCELLED'],
     BLOCKED:     ['IN_PROGRESS', 'CANCELLED'],
     DEFERRED:    ['PENDING', 'CANCELLED'],
     DONE:        [],
     CANCELLED:   [],
   };
+
+  /* Estados desde los que se puede marcar como hecha directamente */
+  const CAN_QUICK_DONE = new Set(['PENDING', 'IN_PROGRESS', 'BLOCKED']);
 
   const ACTION_META = {
     IN_PROGRESS: { label: 'Iniciar',   bg: 'rgba(245,158,11,.25)',  color: '#fbbf24', border: '#b45309' },
@@ -570,6 +592,16 @@
     return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' });
   }
 
+  function fmtDateTime(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    const date = d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const h = d.getHours(), m = d.getMinutes();
+    if (h === 0 && m === 0) return date;
+    const time = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    return `${date} ${time}`;
+  }
+
   function isOverdue(dateStr) {
     if (!dateStr) return false;
     return new Date(dateStr) < new Date();
@@ -620,7 +652,12 @@
 
     tbody.innerHTML = tasks.map(t => {
       const dueCls = isOverdue(t.dueAt) && t.status !== 'DONE' && t.status !== 'CANCELLED' ? 'overdue' : '';
-      const notesPreview = t.notes ? `<span class="notes-preview" title="${esc(t.notes)}">${esc(t.notes)}</span>` : '';
+      const notesPreview = t.notes
+        ? `<span class="notes-preview" title="${esc(t.notes)}" data-id="${t.taskId}">${esc(t.notes)}</span>`
+        : '';
+      const quickDone = CAN_QUICK_DONE.has(t.status)
+        ? `<button class="btn-done-quick" data-done="${t.taskId}" title="Marcar como hecha">✅</button>`
+        : '';
       return `<tr>
         <td class="col-title">
           <div class="title-wrap">
@@ -631,15 +668,23 @@
         <td>${statusBadge(t.status)}</td>
         <td>${priorityHtml(t.priority)}</td>
         <td class="date-cell">${fmt(t.scheduledFor)}</td>
-        <td class="date-cell ${dueCls}">${fmt(t.dueAt)}</td>
+        <td class="date-cell ${dueCls}">${fmtDateTime(t.dueAt)}</td>
         <td>${progressHtml(t.progressPct)}</td>
-        <td><button class="btn-action" data-id="${t.taskId}">Acciones</button></td>
+        <td>
+          <div class="cell-actions">
+            ${quickDone}
+            <button class="btn-action" data-id="${t.taskId}">⋯</button>
+          </div>
+        </td>
       </tr>`;
     }).join('');
     tableWrap.style.display = 'block';
 
     cardsEl.innerHTML = tasks.map(t => {
       const dueCls = isOverdue(t.dueAt) && t.status !== 'DONE' && t.status !== 'CANCELLED' ? 'overdue' : '';
+      const quickDone = CAN_QUICK_DONE.has(t.status)
+        ? `<button class="btn-done-quick" data-done="${t.taskId}">✅ Hecha</button>`
+        : '';
       return `<div class="card">
         <div class="card-header">
           <div class="card-title">${esc(t.title)}</div>
@@ -649,17 +694,26 @@
         <div class="card-meta">
           ${priorityHtml(t.priority)}
           ${t.scheduledFor ? `<span>📅 ${fmt(t.scheduledFor)}</span>` : ''}
-          ${t.dueAt ? `<span class="${dueCls}">⏰ ${fmt(t.dueAt)}</span>` : ''}
+          ${t.dueAt ? `<span class="${dueCls}">⏰ ${fmtDateTime(t.dueAt)}</span>` : ''}
           ${t.progressPct != null ? `<span>▶ ${t.progressPct}%</span>` : ''}
         </div>
         <div class="card-footer">
-          <button class="btn-action" data-id="${t.taskId}">Acciones</button>
+          ${quickDone}
+          <button class="btn-action" data-id="${t.taskId}">⋯ Acciones</button>
         </div>
       </div>`;
     }).join('');
 
     document.querySelectorAll('.btn-action[data-id]').forEach(btn => {
       btn.addEventListener('click', () => openModal(btn.dataset.id));
+    });
+
+    document.querySelectorAll('.btn-done-quick[data-done]').forEach(btn => {
+      btn.addEventListener('click', () => quickMarkDone(btn.dataset.done, btn));
+    });
+
+    document.querySelectorAll('.notes-preview[data-id]').forEach(el => {
+      el.addEventListener('click', () => openModal(el.dataset.id, 'notes'));
     });
   }
 
@@ -701,8 +755,33 @@
     loading = false;
   }
 
+  /* ── Quick mark done ── */
+  async function quickMarkDone(taskId, btn) {
+    if (!taskId || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const res = await fetch(`/tasks-api/${taskId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: TOKEN, toStatus: 'DONE' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
+      const t = tasks.find(x => x.taskId === taskId);
+      if (t) t.status = 'DONE';
+      renderSummary();
+      renderTable();
+      load();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = '✅';
+      alert(`Error: ${err.message}`);
+    }
+  }
+
   /* ── Modal ── */
-  function openModal(taskId) {
+  function openModal(taskId, section) {
     activeTask = tasks.find(t => t.taskId === taskId);
     if (!activeTask) return;
 
@@ -736,6 +815,10 @@
 
     backdrop.classList.add('open');
     document.body.style.overflow = 'hidden';
+
+    if (section === 'notes') {
+      setTimeout(() => notesTA.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    }
   }
 
   function selectTransition(btn) {
